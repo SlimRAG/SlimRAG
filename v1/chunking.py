@@ -5,6 +5,7 @@ from chonkie import RecursiveChunker
 
 EOL = "<EOL>"
 READY = "<READY>"
+EXIT = "<EXIT>"
 
 
 class Chunking:
@@ -13,19 +14,25 @@ class Chunking:
 
     def repr(self):
         lines = []
-        print(READY, file=sys.stdout)
+        print(READY, file=sys.stdout, flush=True)
 
         for line in sys.stdin:
+            line = line.rstrip()
+            if line == EXIT:
+                break
+
             if line != EOL:
                 lines.append(line)
                 continue
 
-            chunks = self.chunker("".join(lines))
+            chunks = self.chunker("\n".join(lines))
             lines = []
             for chunk in chunks:
-                json.dump({
+                d = {
                     "token_count": chunk.token_count,
                     "text": chunk.text,
-                }, sys.stdout)
+                }
+                json.dump(d, sys.stdout)
                 print("", file=sys.stdout)
-            print(EOL, file=sys.stdout)
+                sys.stdout.flush()
+            print(EOL, file=sys.stdout, flush=True)

@@ -11,3 +11,7 @@ tasks:
   test:
     cmds:
       - go test ./...
+
+  sync:
+    cmds:
+      - uv sync
