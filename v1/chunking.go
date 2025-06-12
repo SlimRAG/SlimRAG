@@ -24,14 +24,9 @@ type Chunker struct {
 
 func NewChunker() (c *Chunker, err error) {
 	c = &Chunker{
-		cmd: exec.Command("./.venv/bin/python3", "main.py", "repr"),
+		cmd: exec.Command("uv", "run", "main.py", "repr"),
 	}
-
 	err = c.start()
-	if err != nil {
-		return
-	}
-
 	return
 }
 

@@ -15,3 +15,7 @@ tasks:
   sync:
     cmds:
       - uv sync
+
+  build:
+    cmds:
+      - go build ./cmd/rag
