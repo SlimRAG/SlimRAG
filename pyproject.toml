@@ -5,6 +5,11 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "chonkie[all]>=1.0.10",
+    "chonkie>=1.0.10",
     "fire>=0.7.0",
+]
+
+[dependency-groups]
+dev = [
+    "black>=25.1.0",
 ]

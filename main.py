@@ -1,5 +1,6 @@
-import v1
 import fire
 
+from v1.chunking import Chunking
+
 if __name__ == "__main__":
-    fire.Fire(v1.chunking.Chunking)
+    fire.Fire(Chunking)
