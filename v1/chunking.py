@@ -16,12 +16,11 @@ class Chunking:
         print(READY, file=sys.stdout)
 
         for line in sys.stdin:
-            line = line.rstrip()
             if line != EOL:
                 lines.append(line)
                 continue
 
-            chunks = self.chunker("\n".join(lines))
+            chunks = self.chunker("".join(lines))
             lines = []
             for chunk in chunks:
                 json.dump({
