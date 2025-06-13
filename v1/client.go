@@ -12,7 +12,7 @@ type Client struct {
 	model  string
 }
 
-func NewEmbedder(baseURL string, model string) *Client {
+func NewClient(baseURL string, model string) *Client {
 	client := openai.NewClient(option.WithBaseURL(baseURL))
 	return &Client{
 		client: &client,

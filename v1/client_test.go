@@ -17,9 +17,9 @@ func TestClient(t *testing.T) {
 }
 
 func (s *ClientTestSuite) TestGetEmbedding() {
-	baseURL := os.Getenv("BASE_URL")
+	baseURL := os.Getenv("EMBEDDING_BASE_URL")
 	s.Require().True(len(baseURL) > 0)
-	e := NewEmbedder(baseURL, "Qwen/Qwen3-Embedding-0.6B")
+	e := NewClient(baseURL, "Qwen/Qwen3-Embedding-0.6B")
 	embeddings, err := e.GetEmbedding(context.TODO(), "hello world")
 	s.Nil(err)
 	s.True(len(embeddings) > 0)

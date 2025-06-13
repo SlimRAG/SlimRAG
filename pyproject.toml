@@ -5,12 +5,13 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "chonkie>=1.0.10",
-    "fire>=0.7.0",
-    "vllm>=0.9.1",
+  "chonkie>=1.0.10",
+  "fire>=0.7.0",
+  "mineru[core]>=2.0.0",
+  "vllm>=0.9.1",
 ]
 
 [dependency-groups]
 dev = [
-    "black>=25.1.0",
+  "black>=25.1.0",
 ]
