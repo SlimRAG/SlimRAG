@@ -8,7 +8,6 @@ dependencies = [
   "chonkie>=1.0.10",
   "fire>=0.7.0",
   "mineru[core]>=2.0.0",
-  "vllm>=0.9.1",
 ]
 
 [dependency-groups]
