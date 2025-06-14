@@ -2,19 +2,26 @@ package main
 
 import (
 	"context"
-	"errors"
 	"io/fs"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"syscall"
 
-	"github.com/fioepq9/pzlog"
+	"github.com/cockroachdb/errors"
 	"github.com/gobwas/glob"
+	"github.com/goccy/go-json"
+	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v4"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/urfave/cli/v3"
+	gormzerolog "github.com/vitaliy-art/gorm-zerolog"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+	gormlogger "gorm.io/gorm/logger"
+
+	"github.com/fioepq9/pzlog"
 
 	"github.com/fanyang89/rag/v1"
 )
@@ -55,7 +62,15 @@ var scanCmd = &cli.Command{
 		&cli.StringFlag{
 			Name:    "glob",
 			Aliases: []string{"g"},
-			Value:   "*.pdf",
+			Value:   "*.chunks.json",
+		},
+		&cli.StringFlag{
+			Name: "dsn",
+			Sources: cli.ValueSourceChain{
+				Chain: []cli.ValueSource{
+					cli.EnvVar("RAG_DSN"),
+				},
+			},
 		},
 	},
 	Action: func(ctx context.Context, command *cli.Command) error {
@@ -67,6 +82,22 @@ var scanCmd = &cli.Command{
 		if err != nil {
 			return err
 		}
+
+		logger := gormzerolog.NewGormLogger()
+		logger.IgnoreRecordNotFoundError(true)
+		logger.LogMode(gormlogger.Warn)
+		db, err := gorm.Open(postgres.Open(command.String("dsn")), &gorm.Config{
+			Logger: logger,
+		})
+		if err != nil {
+			return err
+		}
+
+		err = rag.Migrate(db)
+		if err != nil {
+			return err
+		}
+
 		return filepath.WalkDir(path, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return err
@@ -77,8 +108,19 @@ var scanCmd = &cli.Command{
 			if !g.Match(d.Name()) {
 				return nil
 			}
-			log.Info().Str("file", path).Msg("Found file")
-			return nil
+
+			buf, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+
+			var chunks rag.Document
+			err = json.Unmarshal(buf, &chunks)
+			if err != nil {
+				return err
+			}
+
+			return rag.UpsertDocumentChunks(db, &chunks)
 		})
 	},
 }
@@ -86,9 +128,14 @@ var scanCmd = &cli.Command{
 var computeCmd = &cli.Command{
 	Name:  "compute",
 	Usage: "Compute embeddings for files in the database",
+	Action: func(ctx context.Context, command *cli.Command) error {
+		return nil
+	},
 }
 
 func main() {
+	_ = godotenv.Load(".env")
+
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	log.Logger = zerolog.New(pzlog.NewPtermWriter()).With().Timestamp().Caller().Stack().Logger()
 
