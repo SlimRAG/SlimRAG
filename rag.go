@@ -16,10 +16,6 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/urfave/cli/v3"
-	gormzerolog "github.com/vitaliy-art/gorm-zerolog"
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
-	gormlogger "gorm.io/gorm/logger"
 
 	"github.com/fioepq9/pzlog"
 
@@ -83,17 +79,7 @@ var scanCmd = &cli.Command{
 			return err
 		}
 
-		logger := gormzerolog.NewGormLogger()
-		logger.IgnoreRecordNotFoundError(true)
-		logger.LogMode(gormlogger.Warn)
-		db, err := gorm.Open(postgres.Open(command.String("dsn")), &gorm.Config{
-			Logger: logger,
-		})
-		if err != nil {
-			return err
-		}
-
-		err = rag.Migrate(db)
+		db, err := rag.OpenDB(command.String("dsn"))
 		if err != nil {
 			return err
 		}
@@ -128,7 +114,33 @@ var scanCmd = &cli.Command{
 var computeCmd = &cli.Command{
 	Name:  "compute",
 	Usage: "Compute embeddings for files in the database",
+	Flags: []cli.Flag{
+		&cli.StringFlag{
+			Name: "dsn",
+			Sources: cli.ValueSourceChain{
+				Chain: []cli.ValueSource{
+					cli.EnvVar("RAG_DSN"),
+				},
+			},
+		},
+	},
 	Action: func(ctx context.Context, command *cli.Command) error {
+		db, err := rag.OpenDB(command.String("dsn"))
+		if err != nil {
+			return err
+		}
+
+		rows, err := db.Model(&rag.DocumentChunk{}).Where("embedding IS NULL").Rows()
+		defer func() { _ = rows.Close() }()
+
+		for rows.Next() {
+			var chunk rag.DocumentChunk
+			err = db.ScanRows(rows, &chunk)
+			if err != nil {
+				return err
+			}
+		}
+
 		return nil
 	},
 }
