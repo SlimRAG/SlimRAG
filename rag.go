@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io/fs"
 	"os"
 	"os/signal"
@@ -12,6 +13,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/gobwas/glob"
 	"github.com/goccy/go-json"
+	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v4"
 	"github.com/openai/openai-go"
@@ -31,6 +33,8 @@ var cmd = &cli.Command{
 		serveCmd,
 		scanCmd,
 		computeCmd,
+		searchCmd,
+		getChunkCmd,
 	},
 }
 
@@ -87,6 +91,8 @@ var scanCmd = &cli.Command{
 			return err
 		}
 
+		r := rag.RAG{DB: db}
+
 		return filepath.WalkDir(path, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return err
@@ -111,7 +117,7 @@ var scanCmd = &cli.Command{
 				return err
 			}
 
-			return rag.UpsertDocumentChunks(db, &chunks)
+			return r.UpsertDocumentChunks(&chunks)
 		})
 	},
 }
@@ -144,7 +150,100 @@ var computeCmd = &cli.Command{
 		}
 
 		client := openai.NewClient(option.WithBaseURL(baseURL))
-		return rag.ComputeEmbeddings(ctx, db, &client, model)
+		r := rag.RAG{DB: db, Client: &client, Model: model}
+
+		return r.ComputeEmbeddings(ctx)
+	},
+}
+
+var searchCmd = &cli.Command{
+	Name:  "search",
+	Usage: "Search for documents",
+	Arguments: []cli.Argument{
+		&cli.StringArg{Name: "query", Config: cli.StringConfig{TrimSpace: true}},
+	},
+	Flags: []cli.Flag{
+		&cli.StringFlag{
+			Name:    "dsn",
+			Sources: cli.ValueSourceChain{Chain: []cli.ValueSource{cli.EnvVar("RAG_DSN")}},
+		},
+		&cli.StringFlag{
+			Name:    "base_url",
+			Sources: cli.ValueSourceChain{Chain: []cli.ValueSource{cli.EnvVar("EMBEDDING_BASE_URL")}},
+		},
+		&cli.StringFlag{
+			Name:    "model",
+			Sources: cli.ValueSourceChain{Chain: []cli.ValueSource{cli.EnvVar("EMBEDDING_MODEL")}},
+		},
+		&cli.IntFlag{
+			Name:  "limit",
+			Value: 3,
+		},
+	},
+	Action: func(ctx context.Context, command *cli.Command) error {
+		query := command.StringArg("query")
+		if query == "" {
+			return errors.New("query is required")
+		}
+
+		baseURL := command.String("base_url")
+		model := command.String("model")
+		dsn := command.String("dsn")
+		limit := command.Int("limit")
+
+		db, err := rag.OpenDB(dsn)
+		if err != nil {
+			return err
+		}
+
+		client := openai.NewClient(option.WithBaseURL(baseURL))
+		r := rag.RAG{DB: db, Client: &client, Model: model}
+
+		chunks, err := r.QueryDocuments(ctx, query, limit)
+		if err != nil {
+			return err
+		}
+
+		tw := table.NewWriter()
+		tw.AppendHeader(table.Row{"ID", "Raw document", "Chunk ID"})
+		for _, chunk := range chunks {
+			tw.AppendRow(table.Row{
+				chunk.ID,
+				chunk.RawDocument,
+				chunk.ChunkID,
+			})
+		}
+		fmt.Println(tw.Render())
+		return nil
+	},
+}
+
+var getChunkCmd = &cli.Command{
+	Name: "get",
+	Arguments: []cli.Argument{
+		&cli.StringArg{Name: "id", Config: cli.StringConfig{TrimSpace: true}},
+	},
+	Flags: []cli.Flag{
+		&cli.StringFlag{
+			Name:    "dsn",
+			Sources: cli.ValueSourceChain{Chain: []cli.ValueSource{cli.EnvVar("RAG_DSN")}},
+		},
+	},
+	Action: func(ctx context.Context, command *cli.Command) error {
+		id := command.StringArg("id")
+		if id == "" {
+			return errors.New("id is required")
+		}
+		dsn := command.String("dsn")
+		db, err := rag.OpenDB(dsn)
+		if err != nil {
+			return err
+		}
+
+		r := rag.RAG{DB: db}
+		c, err := r.GetDocumentChunk(id)
+		fmt.Println(c.Text)
+		return nil
 	},
 }
 

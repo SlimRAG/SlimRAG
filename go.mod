@@ -7,6 +7,7 @@ require (
 	github.com/fioepq9/pzlog v0.0.0-20230530135430-bdd413a9bdc9
 	github.com/gobwas/glob v0.2.3
 	github.com/goccy/go-json v0.10.5
+	github.com/jedib0t/go-pretty/v6 v6.6.7
 	github.com/joho/godotenv v1.5.1
 	github.com/labstack/echo/v4 v4.13.4
 	github.com/openai/openai-go v1.5.0

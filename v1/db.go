@@ -9,6 +9,7 @@ import (
 	gormzerolog "github.com/vitaliy-art/gorm-zerolog"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 	gormlogger "gorm.io/gorm/logger"
 )
 
@@ -27,6 +28,12 @@ type Document struct {
 	Chunks      []DocumentChunk `json:"chunks"`
 }
 
+type RAG struct {
+	DB     *gorm.DB
+	Client *openai.Client
+	Model  string
+}
+
 func OpenDB(dsn string) (*gorm.DB, error) {
 	logger := gormzerolog.NewGormLogger()
 	logger.IgnoreRecordNotFoundError(true)
@@ -36,22 +43,23 @@ func OpenDB(dsn string) (*gorm.DB, error) {
 		return nil, err
 	}
 
-	err = Migrate(db)
+	err = migrate(db)
 	if err != nil {
 		return nil, err
 	}
 	return db, nil
 }
 
-func Migrate(db *gorm.DB) error {
+func migrate(db *gorm.DB) error {
 	err := db.Exec("CREATE EXTENSION IF NOT EXISTS vector").Error
 	if err != nil {
 		return errors.Wrap(err, "Failed to create vector extension")
 	}
+	//db.Exec("CREATE INDEX ON items USING hnsw (embedding vector_l2_ops)")
 	return db.AutoMigrate(&DocumentChunk{})
 }
 
-func UpsertDocumentChunks(db *gorm.DB, document *Document) error {
+func (r *RAG) UpsertDocumentChunks(document *Document) error {
 	if len(document.Chunks) == 0 {
 		return nil
 	}
@@ -63,18 +71,18 @@ func UpsertDocumentChunks(db *gorm.DB, document *Document) error {
 		c.Document = document.Document
 		c.RawDocument = document.RawDocument
 
-		u := db.Model(&c).Where("document = ? AND chunk_id = ?", c.Document, c.ChunkID).Updates(&c)
+		u := r.DB.Model(&c).Where("document = ? AND chunk_id = ?", c.Document, c.ChunkID).Updates(&c)
 		if err := u.Error; err != nil {
 			return err
 		}
 		if u.RowsAffected == 0 {
-			db.Create(&c)
+			r.DB.Create(&c)
 		}
 		maxChunkID = max(maxChunkID, c.ChunkID)
 	}
 
 	var restChunks []DocumentChunk
-	err := db.Model(&DocumentChunk{}).
+	err := r.DB.Model(&DocumentChunk{}).
 		Select("id").
 		Where("chunk_id > ?", maxChunkID).
 		Find(&restChunks).Error
@@ -83,26 +91,26 @@ func UpsertDocumentChunks(db *gorm.DB, document *Document) error {
 	}
 
 	if len(restChunks) > 0 {
-		return db.Delete(&restChunks).Error
+		return r.DB.Delete(&restChunks).Error
 	}
 
 	return nil
 }
 
-func ComputeEmbeddings(ctx context.Context, db *gorm.DB, client *openai.Client, model string) error {
-	rows, err := db.Model(&DocumentChunk{}).Where("embedding IS NULL").Rows()
+func (r *RAG) ComputeEmbeddings(ctx context.Context) error {
+	rows, err := r.DB.Model(&DocumentChunk{}).Where("embedding IS NULL").Rows()
 	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var chunk DocumentChunk
-		err = db.ScanRows(rows, &chunk)
+		err = r.DB.ScanRows(rows, &chunk)
 		if err != nil {
 			return err
 		}
 
 		var rsp *openai.CreateEmbeddingResponse
-		rsp, err = client.Embeddings.New(ctx, openai.EmbeddingNewParams{
-			Model: model,
+		rsp, err = r.Client.Embeddings.New(ctx, openai.EmbeddingNewParams{
+			Model: r.Model,
 			Input: openai.EmbeddingNewParamsInputUnion{
 				OfString: openai.String(chunk.Text),
 			},
@@ -121,8 +129,47 @@ func ComputeEmbeddings(ctx context.Context, db *gorm.DB, client *openai.Client, 
 		v := pgvector.NewVector(x)
 		chunk.Embedding = &v
 
-		db.Save(&chunk)
+		r.DB.Save(&chunk)
 	}
 
 	return nil
+}
+
+func (r *RAG) QueryDocuments(ctx context.Context, query string, limit int) ([]DocumentChunk, error) {
+	rsp, err := r.Client.Embeddings.New(ctx, openai.EmbeddingNewParams{
+		Model: r.Model,
+		Input: openai.EmbeddingNewParamsInputUnion{
+			OfString: openai.String(query),
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	e := rsp.Data[0].Embedding
+	queryEmbedding := make([]float32, len(e))
+	for i := range rsp.Data[0].Embedding {
+		queryEmbedding[i] = float32(e[i])
+	}
+
+	var chunks []DocumentChunk
+	err = r.DB.Clauses(clause.OrderBy{
+		Expression: clause.Expr{
+			SQL:  "embedding <-> ?",
+			Vars: []interface{}{pgvector.NewVector(queryEmbedding)},
+		}},
+	).Limit(limit).Find(&chunks).Error
+	if err != nil {
+		return nil, err
+	}
+	return chunks, nil
+}
+
+func (r *RAG) GetDocumentChunk(id string) (*DocumentChunk, error) {
+	var c DocumentChunk
+	err := r.DB.Model(&DocumentChunk{}).Where("id = ?", id).First(&c).Error
+	if err != nil {
+		return nil, err
+	}
+	return &c, nil
 }
