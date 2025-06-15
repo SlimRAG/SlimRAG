@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"io/fs"
 	"os"
@@ -13,6 +14,8 @@ import (
 	"github.com/goccy/go-json"
 	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v4"
+	"github.com/openai/openai-go"
+	"github.com/openai/openai-go/option"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/urfave/cli/v3"
@@ -100,8 +103,10 @@ var scanCmd = &cli.Command{
 				return err
 			}
 
+			decoder := json.NewDecoder(bytes.NewReader(buf))
+			decoder.DisallowUnknownFields()
 			var chunks rag.Document
-			err = json.Unmarshal(buf, &chunks)
+			err = decoder.Decode(&chunks)
 			if err != nil {
 				return err
 			}
@@ -116,32 +121,30 @@ var computeCmd = &cli.Command{
 	Usage: "Compute embeddings for files in the database",
 	Flags: []cli.Flag{
 		&cli.StringFlag{
-			Name: "dsn",
-			Sources: cli.ValueSourceChain{
-				Chain: []cli.ValueSource{
-					cli.EnvVar("RAG_DSN"),
-				},
-			},
+			Name:    "dsn",
+			Sources: cli.ValueSourceChain{Chain: []cli.ValueSource{cli.EnvVar("RAG_DSN")}},
+		},
+		&cli.StringFlag{
+			Name:    "base_url",
+			Sources: cli.ValueSourceChain{Chain: []cli.ValueSource{cli.EnvVar("EMBEDDING_BASE_URL")}},
+		},
+		&cli.StringFlag{
+			Name:    "model",
+			Sources: cli.ValueSourceChain{Chain: []cli.ValueSource{cli.EnvVar("EMBEDDING_MODEL")}},
 		},
 	},
 	Action: func(ctx context.Context, command *cli.Command) error {
-		db, err := rag.OpenDB(command.String("dsn"))
+		baseURL := command.String("base_url")
+		model := command.String("model")
+		dsn := command.String("dsn")
+
+		db, err := rag.OpenDB(dsn)
 		if err != nil {
 			return err
 		}
 
-		rows, err := db.Model(&rag.DocumentChunk{}).Where("embedding IS NULL").Rows()
-		defer func() { _ = rows.Close() }()
-
-		for rows.Next() {
-			var chunk rag.DocumentChunk
-			err = db.ScanRows(rows, &chunk)
-			if err != nil {
-				return err
-			}
-		}
-
-		return nil
+		client := openai.NewClient(option.WithBaseURL(baseURL))
+		return rag.ComputeEmbeddings(ctx, db, &client, model)
 	},
 }
 
