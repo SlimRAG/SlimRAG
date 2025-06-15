@@ -18,8 +18,8 @@ type DocumentChunk struct {
 	Document    string           `gorm:"not null"`
 	RawDocument string           `gorm:"not null"`
 	ChunkID     uint             `gorm:"not null" json:"index"`
-	Text        string           `gorm:"not null" json:"text"`
-	Embedding   *pgvector.Vector `gorm:"type:vector(1024)"`
+	Text        string           `gorm:"not null" json:"text,omitzero"`
+	Embedding   *pgvector.Vector `gorm:"type:vector(1024)" json:"embedding,omitzero"`
 }
 
 type Document struct {
@@ -158,7 +158,7 @@ func (r *RAG) QueryDocuments(ctx context.Context, query string, limit int) ([]Do
 			SQL:  "embedding <-> ?",
 			Vars: []interface{}{pgvector.NewVector(queryEmbedding)},
 		}},
-	).Limit(limit).Find(&chunks).Error
+	).Select("id", "document", "raw_document", "chunk_id").Limit(limit).Find(&chunks).Error
 	if err != nil {
 		return nil, err
 	}

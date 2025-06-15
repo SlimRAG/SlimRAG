@@ -6,16 +6,13 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"os/signal"
 	"path/filepath"
-	"syscall"
 
 	"github.com/cockroachdb/errors"
 	"github.com/gobwas/glob"
 	"github.com/goccy/go-json"
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/joho/godotenv"
-	"github.com/labstack/echo/v4"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/rs/zerolog"
@@ -47,11 +44,34 @@ var serveCmd = &cli.Command{
 			Aliases: []string{"a", "l"},
 			Value:   ":5000",
 		},
+		&cli.StringFlag{
+			Name:    "dsn",
+			Sources: cli.ValueSourceChain{Chain: []cli.ValueSource{cli.EnvVar("RAG_DSN")}},
+		},
+		&cli.StringFlag{
+			Name:    "base_url",
+			Sources: cli.ValueSourceChain{Chain: []cli.ValueSource{cli.EnvVar("EMBEDDING_BASE_URL")}},
+		},
+		&cli.StringFlag{
+			Name:    "model",
+			Sources: cli.ValueSourceChain{Chain: []cli.ValueSource{cli.EnvVar("EMBEDDING_MODEL")}},
+		},
 	},
 	Action: func(ctx context.Context, command *cli.Command) error {
-		e := echo.New()
-		rag.RegisterRoutes(e)
-		return e.Start(command.StringArg("bind"))
+		baseURL := command.String("base_url")
+		model := command.String("model")
+		dsn := command.String("dsn")
+
+		db, err := rag.OpenDB(dsn)
+		if err != nil {
+			return err
+		}
+
+		client := openai.NewClient(option.WithBaseURL(baseURL))
+		r := &rag.RAG{DB: db, Client: &client, Model: model}
+
+		s := rag.NewServer(r)
+		return s.Start(command.String("bind"))
 	},
 }
 
@@ -253,10 +273,10 @@ func main() {
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	log.Logger = zerolog.New(pzlog.NewPtermWriter()).With().Timestamp().Caller().Stack().Logger()
 
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
+	//ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	//defer stop()
 
-	err := cmd.Run(ctx, os.Args)
+	err := cmd.Run(context.Background(), os.Args)
 	if err != nil {
 		log.Error().Err(err).Msg("Unexpected error")
 	}

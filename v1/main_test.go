@@ -4,10 +4,11 @@ import (
 	"os"
 	"testing"
 
-	"github.com/fioepq9/pzlog"
 	"github.com/joho/godotenv"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+
+	"github.com/fioepq9/pzlog"
 )
 
 func TestMain(m *testing.M) {

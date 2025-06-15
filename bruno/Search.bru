@@ -1,0 +1,21 @@
+meta {
+  name: Search
+  type: http
+  seq: 2
+}
+
+post {
+  url: http://127.0.0.1:5000/v1/search?limit=3
+  body: json
+  auth: none
+}
+
+params:query {
+  limit: 3
+}
+
+body:json {
+  {
+    "query": "It is intended for use within a loosely-coupled distributed system consisting of moderately large numbers"
+  }
+}
