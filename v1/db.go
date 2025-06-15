@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/cockroachdb/errors"
+	"github.com/minio/minio-go/v7"
 	"github.com/openai/openai-go"
 	"github.com/pgvector/pgvector-go"
 	gormzerolog "github.com/vitaliy-art/gorm-zerolog"
@@ -32,6 +33,7 @@ type RAG struct {
 	DB     *gorm.DB
 	Client *openai.Client
 	Model  string
+	OSS    *minio.Client
 }
 
 func OpenDB(dsn string) (*gorm.DB, error) {
