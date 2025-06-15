@@ -1,7 +1,1 @@
 # RAG
-
-```sql
-ALTER ROLE gorm SUPERUSER;
-CREATE DATABASE ragtest OWNER gorm;
-GRANT ALL PRIVILEGES ON DATABASE ragtest TO gorm;
-```
