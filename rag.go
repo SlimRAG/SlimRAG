@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/gobwas/glob"
@@ -32,6 +33,54 @@ var cmd = &cli.Command{
 		computeCmd,
 		searchCmd,
 		getChunkCmd,
+		generateScriptCmd,
+	},
+}
+
+var generateScriptCmd = &cli.Command{
+	Name:    "generate-script",
+	Aliases: []string{"gen", "generate"},
+	Arguments: []cli.Argument{
+		&cli.StringArg{Name: "path", Config: cli.StringConfig{TrimSpace: true}},
+	},
+	Action: func(ctx context.Context, command *cli.Command) error {
+		path := command.StringArg("path")
+		if path == "" {
+			return errors.New("path is required")
+		}
+
+		err := filepath.WalkDir(path, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() {
+				return nil
+			}
+			if !strings.HasSuffix(path, ".pdf") ||
+				strings.HasSuffix(path, "_layout.pdf") ||
+				strings.HasSuffix(path, "_origin.pdf") ||
+				strings.HasSuffix(path, "_span.pdf") {
+				return nil
+			}
+
+			path, err = filepath.Abs(path)
+			if err != nil {
+				panic(err)
+			}
+			baseDir := filepath.Dir(path)
+			fileNameExt := filepath.Base(path)
+			fileName := strings.TrimSuffix(fileNameExt, filepath.Ext(fileNameExt))
+			markdownFilePath := filepath.Join(baseDir, fileName, "auto", fileName+".md")
+
+			fmt.Printf("uv run mineru --source modelscope -p %s -o %s\n", path, baseDir)
+			fmt.Printf("uv run rag.py chunking %s --output %s.chunks.json", markdownFilePath, markdownFilePath)
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+
+		return nil
 	},
 }
 
