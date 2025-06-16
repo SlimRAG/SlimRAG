@@ -2,6 +2,7 @@ package rag
 
 import (
 	"context"
+	"database/sql"
 
 	"github.com/cockroachdb/errors"
 	"github.com/minio/minio-go/v7"
@@ -99,8 +100,17 @@ func (r *RAG) UpsertDocumentChunks(document *Document) error {
 	return nil
 }
 
-func (r *RAG) ComputeEmbeddings(ctx context.Context) error {
-	rows, err := r.DB.Model(&DocumentChunk{}).Where("embedding IS NULL").Rows()
+func (r *RAG) ComputeEmbeddings(ctx context.Context, onlyEmpty bool) error {
+	var err error
+	var rows *sql.Rows
+	if onlyEmpty {
+		rows, err = r.DB.Model(&DocumentChunk{}).Where("embedding IS NULL").Rows()
+	} else {
+		rows, err = r.DB.Model(&DocumentChunk{}).Rows()
+	}
+	if err != nil {
+		return err
+	}
 	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {

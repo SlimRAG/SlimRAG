@@ -236,11 +236,16 @@ var computeCmd = &cli.Command{
 			Name:    "model",
 			Sources: cli.ValueSourceChain{Chain: []cli.ValueSource{cli.EnvVar("EMBEDDING_MODEL")}},
 		},
+		&cli.BoolFlag{
+			Name:  "force",
+			Value: false,
+		},
 	},
 	Action: func(ctx context.Context, command *cli.Command) error {
 		baseURL := command.String("base_url")
 		model := command.String("model")
 		dsn := command.String("dsn")
+		force := command.Bool("force")
 
 		db, err := rag.OpenDB(dsn)
 		if err != nil {
@@ -250,7 +255,7 @@ var computeCmd = &cli.Command{
 		client := openai.NewClient(option.WithBaseURL(baseURL))
 		r := rag.RAG{DB: db, Client: &client, Model: model}
 
-		return r.ComputeEmbeddings(ctx)
+		return r.ComputeEmbeddings(ctx, !force)
 	},
 }
 
