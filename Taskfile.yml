@@ -12,22 +12,6 @@ tasks:
     cmds:
       - go test ./...
 
-  sync:
-    cmds:
-      - uv sync
-
   build:
     cmds:
       - go build ./cmd/rag
-
-  download:
-    cmds:
-      - uv run mineru-models-download -s modelscope
-
-  miner:
-    cmds:
-      - uv run mineru --source modelscope -p ./testdata/chubby-osdi06.pdf -o ./tmp
-
-  chunking:
-    cmds:
-      - uv run .\rag.py chunking ./tmp/chubby-osdi06/auto/chubby-osdi06.md --output ./tmp/chubby-osdi06/auto/chubby-osdi06.md.chunks.json
