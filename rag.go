@@ -5,9 +5,13 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
+	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/gobwas/glob"
@@ -37,17 +41,23 @@ var cmd = &cli.Command{
 	},
 }
 
+var trimSpace = cli.StringConfig{TrimSpace: true}
+
 var generateScriptCmd = &cli.Command{
 	Name:    "generate-script",
 	Aliases: []string{"gen", "generate"},
 	Arguments: []cli.Argument{
-		&cli.StringArg{Name: "path", Config: cli.StringConfig{TrimSpace: true}},
+		&cli.StringArg{Name: "path", Config: trimSpace},
+	},
+	Flags: []cli.Flag{
+		&cli.StringFlag{Name: "rag-tools", Aliases: []string{"t", "tools"}, Config: trimSpace},
 	},
 	Action: func(ctx context.Context, command *cli.Command) error {
 		path := command.StringArg("path")
 		if path == "" {
 			return errors.New("path is required")
 		}
+		toolPath := command.String("rag-tools")
 
 		err := filepath.WalkDir(path, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
@@ -72,8 +82,15 @@ var generateScriptCmd = &cli.Command{
 			fileName := strings.TrimSuffix(fileNameExt, filepath.Ext(fileNameExt))
 			markdownFilePath := filepath.Join(baseDir, fileName, "auto", fileName+".md")
 
-			fmt.Printf("uv run mineru --source modelscope -p %s -o %s\n", path, baseDir)
-			fmt.Printf("uv run rag.py chunking %s --output %s.chunks.json", markdownFilePath, markdownFilePath)
+			toolArg := " "
+			ragCliPath := "rag.py"
+			if toolPath != "" {
+				toolArg = fmt.Sprintf(" --project %s ", toolPath)
+				ragCliPath = filepath.Join(toolPath, "rag.py")
+			}
+
+			fmt.Printf("uv run%smineru --source modelscope -p %s -o %s\n", toolArg, path, baseDir)
+			fmt.Printf("uv run%s%s chunking %s --output %s.chunks.json", toolArg, ragCliPath, markdownFilePath, markdownFilePath)
 			return nil
 		})
 		if err != nil {
@@ -120,7 +137,19 @@ var serveCmd = &cli.Command{
 		r := &rag.RAG{DB: db, Client: &client, Model: model}
 
 		s := rag.NewServer(r)
-		return s.Start(command.String("bind"))
+		go func() {
+			select {
+			case <-ctx.Done():
+				closeCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				_ = s.Shutdown(closeCtx)
+			}
+		}()
+		err = s.Start(command.String("bind"))
+		if err == nil || errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return err
 	},
 }
 
@@ -322,10 +351,10 @@ func main() {
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	log.Logger = zerolog.New(pzlog.NewPtermWriter()).With().Timestamp().Caller().Stack().Logger()
 
-	//ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	//defer stop()
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
-	err := cmd.Run(context.Background(), os.Args)
+	err := cmd.Run(ctx, os.Args)
 	if err != nil {
 		log.Error().Err(err).Msg("Unexpected error")
 	}

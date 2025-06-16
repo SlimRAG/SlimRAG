@@ -27,6 +27,10 @@ func (s *Server) Start(bind string) error {
 	return s.e.Start(bind)
 }
 
+func (s *Server) Shutdown(ctx context.Context) error {
+	return s.e.Shutdown(ctx)
+}
+
 type SearchParam struct {
 	Query string `json:"query" validate:"required"`
 	Limit int
