@@ -54,10 +54,12 @@ var generateScriptCmd = &cli.Command{
 		&cli.StringFlag{Name: "rag-tools", Aliases: []string{"t", "tools"}, Config: trimSpace},
 		&cli.StringFlag{Name: "output", Aliases: []string{"o"}, Value: "-", Config: trimSpace},
 		&cli.BoolFlag{Name: "shebang", Value: true},
+		&cli.BoolFlag{Name: "with-pueue", Value: false},
 	},
 	Action: func(ctx context.Context, command *cli.Command) error {
 		var err error
 
+		withPueue := command.Bool("with-pueue")
 		path := command.StringArg("path")
 		if path == "" {
 			return errors.New("path is required")
@@ -118,14 +120,28 @@ var generateScriptCmd = &cli.Command{
 				ragCliPath = filepath.Join(toolPath, "rag.py")
 			}
 
-			_, err = fmt.Fprintf(w, "uv run%smineru --source modelscope -p '%s' -o '%s'\n",
+			if withPueue {
+				_, err = fmt.Fprintf(w, "pueue add -- \"")
+				if err != nil {
+					return err
+				}
+			}
+
+			_, err = fmt.Fprintf(w, "uv run%smineru --source modelscope -p '%s' -o '%s'",
 				toolArg, path, baseDir)
 			if err != nil {
 				return err
 			}
 
-			_, err = fmt.Fprintf(w, "uv run%s%s chunking '%s' --output '%s.chunks.json'\n",
+			_, err = fmt.Fprintf(io.Discard, "uv run%s%s chunking '%s' --output '%s.chunks.json'",
 				toolArg, ragCliPath, markdownFilePath, markdownFilePath)
+
+			if withPueue {
+				_, err = fmt.Fprintf(w, "\"\n")
+				if err != nil {
+					return err
+				}
+			}
 			return err
 		})
 		if err != nil {
