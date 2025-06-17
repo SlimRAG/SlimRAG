@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"io/fs"
 	"net/http"
 	"os"
@@ -51,15 +52,43 @@ var generateScriptCmd = &cli.Command{
 	},
 	Flags: []cli.Flag{
 		&cli.StringFlag{Name: "rag-tools", Aliases: []string{"t", "tools"}, Config: trimSpace},
+		&cli.StringFlag{Name: "output", Aliases: []string{"o"}, Value: "-", Config: trimSpace},
+		&cli.BoolFlag{Name: "shebang", Value: true},
 	},
 	Action: func(ctx context.Context, command *cli.Command) error {
+		var err error
+
 		path := command.StringArg("path")
 		if path == "" {
 			return errors.New("path is required")
 		}
 		toolPath := command.String("rag-tools")
 
-		err := filepath.WalkDir(path, func(path string, d fs.DirEntry, err error) error {
+		var w io.Writer
+		if outputPath := command.String("output"); outputPath == "-" {
+			w = os.Stdout
+		} else {
+			f, err := os.Create(outputPath)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = f.Close() }()
+			w = f
+		}
+
+		if command.Bool("shebang") {
+			_, err = fmt.Fprintln(w, "#!/bin/bash")
+			if err != nil {
+				return err
+			}
+		}
+
+		_, err = fmt.Fprintln(w, "trap 'exit' INT")
+		if err != nil {
+			return err
+		}
+
+		err = filepath.WalkDir(path, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return err
 			}
@@ -89,15 +118,21 @@ var generateScriptCmd = &cli.Command{
 				ragCliPath = filepath.Join(toolPath, "rag.py")
 			}
 
-			fmt.Printf("uv run%smineru --source modelscope -p %s -o %s\n", toolArg, path, baseDir)
-			fmt.Printf("uv run%s%s chunking %s --output %s.chunks.json", toolArg, ragCliPath, markdownFilePath, markdownFilePath)
-			return nil
+			_, err = fmt.Fprintf(w, "uv run%smineru --source modelscope -p '%s' -o '%s'\n",
+				toolArg, path, baseDir)
+			if err != nil {
+				return err
+			}
+
+			_, err = fmt.Fprintf(w, "uv run%s%s chunking '%s' --output '%s.chunks.json'\n",
+				toolArg, ragCliPath, markdownFilePath, markdownFilePath)
+			return err
 		})
 		if err != nil {
 			return err
 		}
-
-		return nil
+		_, err = fmt.Fprintln(w)
+		return err
 	},
 }
 

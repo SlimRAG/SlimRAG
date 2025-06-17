@@ -14,4 +14,11 @@ tasks:
 
   build:
     cmds:
-      - go build ./cmd/rag
+      - go build rag.go
+
+  build-linux:
+    env:
+      GOOS: linux
+      GOARCH: amd64
+    cmds:
+      - go build rag.go
