@@ -11,6 +11,7 @@ import (
 	"github.com/negrel/assert"
 	"github.com/openai/openai-go"
 	"github.com/pgvector/pgvector-go"
+	"github.com/schollz/progressbar/v3"
 	gormzerolog "github.com/vitaliy-art/gorm-zerolog"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -23,7 +24,7 @@ type DocumentChunk struct {
 	Document    string           `gorm:"not null"`
 	RawDocument string           `gorm:"not null"`
 	Text        string           `gorm:"not null" json:"text,omitzero"`
-	Embedding   *pgvector.Vector `gorm:"type:vector(1024)" json:"embedding,omitzero"`
+	Embedding   *pgvector.Vector `gorm:"type:vector(4096)" json:"embedding,omitzero"`
 }
 
 func hashString(s string) uint64 {
@@ -115,11 +116,20 @@ func (r *RAG) ComputeEmbeddings(ctx context.Context, onlyEmpty bool) error {
 	}
 	defer func() { _ = rows.Close() }()
 
+	bar := progressbar.Default(-1)
+	bar.Describe("Computing embeddings")
+	defer func() { _ = bar.Finish() }()
+
 	for rows.Next() {
+		_ = bar.Add(1)
+
 		var chunk DocumentChunk
 		err = r.DB.ScanRows(rows, &chunk)
 		if err != nil {
 			return err
+		}
+		if chunk.Embedding != nil {
+			continue
 		}
 
 		var rsp *openai.CreateEmbeddingResponse
