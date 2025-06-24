@@ -8,10 +8,8 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -24,6 +22,7 @@ import (
 	"github.com/openai/openai-go/option"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"github.com/schollz/progressbar/v3"
 	"github.com/urfave/cli/v3"
 
 	"github.com/fioepq9/pzlog"
@@ -252,20 +251,28 @@ var scanCmd = &cli.Command{
 
 		r := rag.RAG{DB: db}
 
-		return filepath.WalkDir(path, func(path string, d fs.DirEntry, err error) error {
+		pathList := make([]string, 0)
+		err = filepath.WalkDir(path, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return err
 			}
-			if d.IsDir() {
-				return nil
+			if !d.IsDir() && g.Match(d.Name()) {
+				pathList = append(pathList, path)
 			}
-			if !g.Match(d.Name()) {
-				return nil
-			}
+			return nil
+		})
+
+		bar := progressbar.New(len(pathList))
+		bar.Describe("Uploading chunks")
+		defer func() { _ = bar.Finish() }()
+
+		for _, path := range pathList {
+			_ = bar.Add(1)
 
 			buf, err := os.ReadFile(path)
 			if err != nil {
-				return err
+				log.Error().Err(err).Stack().Str("path", path).Msg("Read file")
+				continue
 			}
 
 			decoder := json.NewDecoder(bytes.NewReader(buf))
@@ -273,16 +280,23 @@ var scanCmd = &cli.Command{
 			var chunks rag.Document
 			err = decoder.Decode(&chunks)
 			if err != nil {
-				return err
+				log.Error().Err(err).Stack().Str("path", path).Msg("Decode")
+				continue
+			}
+			chunks.FixString()
+
+			if dryRun {
+				log.Info().Str("path", path).Msg("Skipped chunks uploading due to dry-run")
+				continue
 			}
 
-			if !dryRun {
-				return r.UpsertDocumentChunks(&chunks)
-			} else {
-				log.Info().Str("path", path).Msg("Skipped chunks uploading due to dry-run")
-				return nil
+			err = r.UpsertDocumentChunks(&chunks)
+			if err != nil {
+				log.Error().Err(err).Stack().Str("path", path).Msg("Upsert chunks")
 			}
-		})
+		}
+
+		return nil
 	},
 }
 
@@ -422,10 +436,10 @@ func main() {
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	log.Logger = zerolog.New(pzlog.NewPtermWriter()).With().Timestamp().Caller().Stack().Logger()
 
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
+	//ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	//defer stop()
 
-	err := cmd.Run(ctx, os.Args)
+	err := cmd.Run(context.Background(), os.Args)
 	if err != nil {
 		log.Error().Err(err).Msg("Unexpected error")
 	}

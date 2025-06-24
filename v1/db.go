@@ -3,6 +3,7 @@ package rag
 import (
 	"context"
 	"database/sql"
+	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/minio/minio-go/v7"
@@ -24,11 +25,25 @@ type DocumentChunk struct {
 	Embedding   *pgvector.Vector `gorm:"type:vector(1024)" json:"embedding,omitzero"`
 }
 
+func (c *DocumentChunk) FixString() {
+	p := strings.IndexRune(c.Text, '\x00')
+	if p == -1 {
+		return
+	}
+	c.Text = c.Text[:p]
+}
+
 type Document struct {
 	FileName    string          `json:"file_name"`
 	Document    string          `json:"document"`
 	RawDocument string          `json:"raw_document"`
 	Chunks      []DocumentChunk `json:"chunks"`
+}
+
+func (d *Document) FixString() {
+	for _, chunk := range d.Chunks {
+		chunk.FixString()
+	}
 }
 
 type RAG struct {
@@ -41,8 +56,10 @@ type RAG struct {
 func OpenDB(dsn string) (*gorm.DB, error) {
 	logger := gormzerolog.NewGormLogger()
 	logger.IgnoreRecordNotFoundError(true)
-	logger.LogMode(gormlogger.Warn)
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{Logger: logger})
+	logger.LogMode(gormlogger.Error)
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
+		Logger: logger,
+	})
 	if err != nil {
 		return nil, err
 	}
