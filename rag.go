@@ -276,14 +276,14 @@ var scanCmd = &cli.Command{
 			}
 
 			decoder := json.NewDecoder(bytes.NewReader(buf))
-			decoder.DisallowUnknownFields()
+			//decoder.DisallowUnknownFields()
 			var chunks rag.Document
 			err = decoder.Decode(&chunks)
 			if err != nil {
 				log.Error().Err(err).Stack().Str("path", path).Msg("Decode")
 				continue
 			}
-			chunks.FixString()
+			chunks.Fix()
 
 			if dryRun {
 				log.Info().Str("path", path).Msg("Skipped chunks uploading due to dry-run")
@@ -393,7 +393,6 @@ var searchCmd = &cli.Command{
 			tw.AppendRow(table.Row{
 				chunk.ID,
 				chunk.RawDocument,
-				chunk.ChunkID,
 			})
 		}
 		fmt.Println(tw.Render())

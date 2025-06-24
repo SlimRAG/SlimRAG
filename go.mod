@@ -3,6 +3,7 @@ module github.com/fanyang89/rag
 go 1.24.4
 
 require (
+	github.com/cespare/xxhash v1.1.0
 	github.com/cockroachdb/errors v1.12.0
 	github.com/fioepq9/pzlog v0.0.0-20230530135430-bdd413a9bdc9
 	github.com/gobwas/glob v0.2.3

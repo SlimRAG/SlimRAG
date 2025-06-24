@@ -5,8 +5,10 @@ import (
 	"database/sql"
 	"strings"
 
+	"github.com/cespare/xxhash"
 	"github.com/cockroachdb/errors"
 	"github.com/minio/minio-go/v7"
+	"github.com/negrel/assert"
 	"github.com/openai/openai-go"
 	"github.com/pgvector/pgvector-go"
 	gormzerolog "github.com/vitaliy-art/gorm-zerolog"
@@ -17,20 +19,23 @@ import (
 )
 
 type DocumentChunk struct {
-	ID          uint             `gorm:"primaryKey;autoIncrement"`
+	ID          uint64           `gorm:"primaryKey"`
 	Document    string           `gorm:"not null"`
 	RawDocument string           `gorm:"not null"`
-	ChunkID     uint             `gorm:"not null" json:"index"`
 	Text        string           `gorm:"not null" json:"text,omitzero"`
 	Embedding   *pgvector.Vector `gorm:"type:vector(1024)" json:"embedding,omitzero"`
 }
 
-func (c *DocumentChunk) FixString() {
-	p := strings.IndexRune(c.Text, '\x00')
-	if p == -1 {
-		return
-	}
-	c.Text = c.Text[:p]
+func hashString(s string) uint64 {
+	h := xxhash.New()
+	_, err := h.Write([]byte(s))
+	assert.NoError(err)
+	return h.Sum64()
+}
+
+func (c *DocumentChunk) Fix() {
+	c.Text = strings.ReplaceAll(c.Text, "\u0000", "")
+	c.ID = hashString(c.Text)
 }
 
 type Document struct {
@@ -40,9 +45,9 @@ type Document struct {
 	Chunks      []DocumentChunk `json:"chunks"`
 }
 
-func (d *Document) FixString() {
+func (d *Document) Fix() {
 	for _, chunk := range d.Chunks {
-		chunk.FixString()
+		chunk.Fix()
 	}
 }
 
@@ -85,37 +90,16 @@ func (r *RAG) UpsertDocumentChunks(document *Document) error {
 		return nil
 	}
 
-	maxChunkID := document.Chunks[0].ChunkID
-
 	for i := range document.Chunks {
 		c := &document.Chunks[i]
 		c.Document = document.Document
 		c.RawDocument = document.RawDocument
-
-		u := r.DB.Model(&c).Where("document = ? AND chunk_id = ?", c.Document, c.ChunkID).Updates(&c)
-		if err := u.Error; err != nil {
-			return err
-		}
-		if u.RowsAffected == 0 {
-			r.DB.Create(&c)
-		}
-		maxChunkID = max(maxChunkID, c.ChunkID)
 	}
 
-	var restChunks []DocumentChunk
-	err := r.DB.Model(&DocumentChunk{}).
-		Select("id").
-		Where("chunk_id > ?", maxChunkID).
-		Find(&restChunks).Error
-	if err != nil {
-		return err
-	}
-
-	if len(restChunks) > 0 {
-		return r.DB.Delete(&restChunks).Error
-	}
-
-	return nil
+	return r.DB.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"document", "raw_document"}),
+	}).Create(&document.Chunks).Error
 }
 
 func (r *RAG) ComputeEmbeddings(ctx context.Context, onlyEmpty bool) error {
