@@ -25,6 +25,7 @@ type DocumentChunk struct {
 }
 
 type Document struct {
+	FileName    string          `json:"file_name"`
 	Document    string          `json:"document"`
 	RawDocument string          `json:"raw_document"`
 	Chunks      []DocumentChunk `json:"chunks"`

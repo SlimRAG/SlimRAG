@@ -215,7 +215,7 @@ var scanCmd = &cli.Command{
 		&cli.StringFlag{
 			Name:    "glob",
 			Aliases: []string{"g"},
-			Value:   "*.chunks.json",
+			Value:   "*.md.chunks.json",
 		},
 		&cli.StringFlag{
 			Name: "dsn",
@@ -225,18 +225,27 @@ var scanCmd = &cli.Command{
 				},
 			},
 		},
+		&cli.BoolFlag{
+			Name: "dry-run",
+		},
 	},
 	Action: func(ctx context.Context, command *cli.Command) error {
+		dryRun := command.Bool("dry-run")
+		dsn := command.String("dsn")
+		if dsn == "" {
+			return errors.New("dsn is required")
+		}
 		path := command.StringArg("path")
 		if path == "" {
 			return errors.New("path is required")
 		}
+
 		g, err := glob.Compile(command.String("glob"))
 		if err != nil {
 			return err
 		}
 
-		db, err := rag.OpenDB(command.String("dsn"))
+		db, err := rag.OpenDB(dsn)
 		if err != nil {
 			return err
 		}
@@ -267,7 +276,12 @@ var scanCmd = &cli.Command{
 				return err
 			}
 
-			return r.UpsertDocumentChunks(&chunks)
+			if !dryRun {
+				return r.UpsertDocumentChunks(&chunks)
+			} else {
+				log.Info().Str("path", path).Msg("Skipped chunks uploading due to dry-run")
+				return nil
+			}
 		})
 	},
 }
