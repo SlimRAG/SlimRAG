@@ -402,19 +402,27 @@ var searchCmd = &cli.Command{
 	Flags: []cli.Flag{
 		&cli.StringFlag{
 			Name:    "dsn",
-			Sources: cli.ValueSourceChain{Chain: []cli.ValueSource{cli.EnvVar("RAG_DSN")}},
+			Sources: cli.NewValueSourceChain(cli.EnvVar("RAG_DSN")),
 		},
 		&cli.StringFlag{
 			Name:    "base_url",
-			Sources: cli.ValueSourceChain{Chain: []cli.ValueSource{cli.EnvVar("EMBEDDING_BASE_URL")}},
+			Sources: cli.NewValueSourceChain(cli.EnvVar("EMBEDDING_BASE_URL")),
 		},
 		&cli.StringFlag{
 			Name:    "model",
-			Sources: cli.ValueSourceChain{Chain: []cli.ValueSource{cli.EnvVar("EMBEDDING_MODEL")}},
+			Sources: cli.NewValueSourceChain(cli.EnvVar("EMBEDDING_MODEL")),
+		},
+		&cli.StringFlag{
+			Name:    "reranker_base_url",
+			Sources: cli.NewValueSourceChain(cli.EnvVar("RERANKER_BASE_URL")),
+		},
+		&cli.StringFlag{
+			Name:    "reranker_model",
+			Sources: cli.NewValueSourceChain(cli.EnvVar("RERANKER_MODEL")),
 		},
 		&cli.IntFlag{
 			Name:  "limit",
-			Value: 3,
+			Value: 10,
 		},
 	},
 	Action: func(ctx context.Context, command *cli.Command) error {
@@ -425,6 +433,8 @@ var searchCmd = &cli.Command{
 
 		baseURL := command.String("base_url")
 		model := command.String("model")
+		rerankerBaseURL := command.String("reranker_base_url")
+		rerankerModel := command.String("reranker_model")
 		dsn := command.String("dsn")
 		limit := command.Int("limit")
 
@@ -434,9 +444,21 @@ var searchCmd = &cli.Command{
 		}
 
 		client := openai.NewClient(option.WithBaseURL(baseURL))
-		r := rag.RAG{DB: db, Client: &client, Model: model}
+		rerankerClient := rag.NewInfinityClient(rerankerBaseURL)
+		r := rag.RAG{
+			DB:             db,
+			Client:         &client,
+			Model:          model,
+			RerankerClient: rerankerClient,
+			RerankerModel:  rerankerModel,
+		}
 
-		chunks, err := r.QueryDocuments(ctx, query, limit)
+		chunks, err := r.QueryDocumentChunks(ctx, query, limit)
+		if err != nil {
+			return err
+		}
+
+		chunks, err = r.Rerank(query, chunks, limit)
 		if err != nil {
 			return err
 		}

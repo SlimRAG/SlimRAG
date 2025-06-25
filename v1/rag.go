@@ -56,10 +56,12 @@ func (d *Document) Fix() {
 }
 
 type RAG struct {
-	DB     *gorm.DB
-	Client *openai.Client
-	Model  string
-	OSS    *minio.Client
+	DB             *gorm.DB
+	Client         *openai.Client
+	Model          string
+	OSS            *minio.Client
+	RerankerClient *InfinityClient
+	RerankerModel  string
 }
 
 func OpenDB(dsn string) (*gorm.DB, error) {
@@ -180,7 +182,7 @@ func castDown(e []float64) []float32 {
 	return x
 }
 
-func (r *RAG) QueryDocuments(ctx context.Context, query string, limit int) ([]DocumentChunk, error) {
+func (r *RAG) QueryDocumentChunks(ctx context.Context, query string, limit int) ([]DocumentChunk, error) {
 	rsp, err := r.Client.Embeddings.New(ctx, openai.EmbeddingNewParams{
 		Model: r.Model,
 		Input: openai.EmbeddingNewParamsInputUnion{
@@ -254,4 +256,30 @@ func (r *RAG) FindInvalidChunks(ctx context.Context, cb func(chunk *DocumentChun
 
 func (r *RAG) DeleteChunk(id uint64) error {
 	return r.DB.Where("id = ?", id).Delete(&DocumentChunk{}).Error
+}
+
+func (r *RAG) Rerank(query string, chunks []DocumentChunk, topN int) ([]DocumentChunk, error) {
+	m := make(map[uint64]int)
+	docs := make([]string, len(chunks))
+	for i, c := range chunks {
+		docs[i] = c.Text
+		m[hashString(c.Text)] = i
+	}
+
+	rsp, err := r.RerankerClient.Rerank(&RerankRequest{
+		Model:           r.RerankerModel,
+		Query:           query,
+		Documents:       docs,
+		TopN:            topN,
+		ReturnDocuments: true, // TODO:	maybe we don't need this
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	cs := make([]DocumentChunk, len(rsp.Results))
+	for i, x := range rsp.Results {
+		cs[i] = chunks[m[hashString(x.Document)]]
+	}
+	return cs, nil
 }
