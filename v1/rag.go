@@ -28,6 +28,7 @@ type DocumentChunk struct {
 	RawDocument string               `gorm:"not null"`
 	Text        string               `gorm:"not null" json:"text,omitzero"`
 	Embedding   *pgvector.HalfVector `gorm:"type:halfvec(4000)" json:"embedding,omitzero"`
+	Index       int                  `gorm:"-:all" json:"index"`
 }
 
 func hashString(s string) uint64 {
@@ -37,21 +38,25 @@ func hashString(s string) uint64 {
 	return h.Sum64()
 }
 
-func (c *DocumentChunk) Fix() {
+func (c *DocumentChunk) Fix(d *Document) {
 	c.Text = strings.ReplaceAll(c.Text, "\u0000", "")
 	c.ID = hashString(c.Text)
+	c.Document = d.Document
+	c.RawDocument = d.RawDocument
 }
 
 type Document struct {
-	FileName    string          `json:"file_name"`
-	Document    string          `json:"document"`
-	RawDocument string          `json:"raw_document"`
-	Chunks      []DocumentChunk `json:"chunks"`
+	FileName    string           `json:"file_name"`
+	Document    string           `json:"document"`
+	RawDocument string           `json:"raw_document"`
+	Chunks      []*DocumentChunk `json:"chunks"`
 }
 
 func (d *Document) Fix() {
+	d.Document = strings.TrimSuffix(d.FileName, ".md")
+	d.RawDocument = d.FileName
 	for _, chunk := range d.Chunks {
-		chunk.Fix()
+		chunk.Fix(d)
 	}
 }
 
@@ -89,19 +94,33 @@ func migrate(db *gorm.DB) error {
 	if err != nil {
 		return errors.Wrap(err, "Failed to create vector extension")
 	}
-	//db.Exec("CREATE INDEX ON items USING hnsw (embedding vector_l2_ops)")
-	return db.AutoMigrate(&DocumentChunk{})
+
+	err = db.AutoMigrate(&DocumentChunk{})
+	if err != nil {
+		return errors.Wrap(err, "Failed to migrate document chunks")
+	}
+
+	err = db.Exec(`SET maintenance_work_mem = '8GB'`).Error
+	if err != nil {
+		return errors.Wrap(err, "Failed to set maintenance work mem")
+	}
+
+	err = db.Exec(`SET max_parallel_maintenance_workers = 32`).Error
+	if err != nil {
+		return errors.Wrap(err, "Failed to set max_parallel_maintenance_workers")
+	}
+
+	err = db.Exec(`CREATE INDEX ON document_chunks USING hnsw (embedding halfvec_l2_ops)`).Error
+	if err != nil {
+		return errors.Wrap(err, "Failed to create index on document_chunks")
+	}
+
+	return nil
 }
 
 func (r *RAG) UpsertDocumentChunks(document *Document) error {
 	if len(document.Chunks) == 0 {
 		return nil
-	}
-
-	for i := range document.Chunks {
-		c := &document.Chunks[i]
-		c.Document = document.Document
-		c.RawDocument = document.RawDocument
 	}
 
 	return r.DB.Clauses(clause.OnConflict{
@@ -176,6 +195,7 @@ func (r *RAG) ComputeEmbeddings(ctx context.Context, onlyEmpty bool, workers int
 	return nil
 }
 
+// TODO: use PCA for cast down
 func castDown(e []float64) []float32 {
 	x := make([]float32, 4000)
 	for i := range x {

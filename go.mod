@@ -18,10 +18,12 @@ require (
 	github.com/rs/zerolog v1.34.0
 	github.com/schollz/progressbar/v3 v3.18.0
 	github.com/sourcegraph/conc v0.3.0
+	github.com/stretchr/testify v1.10.0
 	github.com/urfave/cli/v3 v3.3.8
 	github.com/vitaliy-art/gorm-zerolog v1.2.0
 	gorm.io/driver/postgres v1.6.0
 	gorm.io/gorm v1.30.0
+	resty.dev/v3 v3.0.0-beta.3
 )
 
 replace github.com/fioepq9/pzlog => ./pzlog
@@ -80,5 +82,5 @@ require (
 	golang.org/x/sys v0.33.0 // indirect
 	golang.org/x/term v0.32.0 // indirect
 	golang.org/x/text v0.26.0 // indirect
-	resty.dev/v3 v3.0.0-beta.3 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

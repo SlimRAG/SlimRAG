@@ -85,7 +85,7 @@ var scanCmd = &cli.Command{
 			}
 
 			decoder := json.NewDecoder(bytes.NewReader(buf))
-			//decoder.DisallowUnknownFields()
+			decoder.DisallowUnknownFields()
 			var chunks rag.Document
 			err = decoder.Decode(&chunks)
 			if err != nil {
