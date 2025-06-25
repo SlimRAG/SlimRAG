@@ -199,8 +199,7 @@ func (r *RAG) ComputeEmbeddings(ctx context.Context, onlyEmpty bool, workers int
 				return
 			}
 
-			embedding := rsp.Data[0].Embedding
-			v := pgvector.NewHalfVector(castDown(embedding))
+			v := pgvector.NewHalfVector(castDown(rsp.Data[0].Embedding))
 			chunk.Embedding = &v
 
 			r.DB.Save(&chunk)
@@ -212,11 +211,10 @@ func (r *RAG) ComputeEmbeddings(ctx context.Context, onlyEmpty bool, workers int
 	return nil
 }
 
-// TODO: use PCA for cast down
-func castDown(e []float64) []float32 {
-	x := make([]float32, 4000)
-	for i := range x {
-		x[i] = float32(e[i])
+func castDown(v []float64) []float32 {
+	x := make([]float32, len(v))
+	for i, f := range v {
+		x[i] = float32(f)
 	}
 	return x
 }
@@ -227,6 +225,7 @@ func (r *RAG) QueryDocumentChunks(ctx context.Context, query string, limit int) 
 		Input: openai.EmbeddingNewParamsInputUnion{
 			OfString: openai.String(query),
 		},
+		Dimensions: openai.Int(4000),
 	})
 	if err != nil {
 		return nil, err

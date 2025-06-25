@@ -17,12 +17,10 @@ require (
 	github.com/pgvector/pgvector-go v0.3.0
 	github.com/rs/zerolog v1.34.0
 	github.com/schollz/progressbar/v3 v3.18.0
-	github.com/sjwhitworth/golearn v0.0.0-20221228163002-74ae077eafb2
 	github.com/sourcegraph/conc v0.3.0
 	github.com/stretchr/testify v1.10.0
 	github.com/urfave/cli/v3 v3.3.8
 	github.com/vitaliy-art/gorm-zerolog v1.2.0
-	gonum.org/v1/gonum v0.8.1
 	gorm.io/driver/postgres v1.6.0
 	gorm.io/gorm v1.30.0
 	resty.dev/v3 v3.0.0-beta.3
