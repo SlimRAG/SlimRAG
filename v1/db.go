@@ -224,8 +224,14 @@ func (r *RAG) FindInvalidChunks(ctx context.Context, cb func(chunk *DocumentChun
 	bar.Describe("Cleaning up chunks")
 	defer func() { _ = bar.Finish() }()
 
+	zeroVector := pgvector.NewHalfVector(make([]float32, 4000))
+
+	var err error
 	var rows *sql.Rows
-	rows, err := r.DB.Model(&DocumentChunk{}).Where("embedding IS NULL OR (text = '') IS NOT FALSE").Rows()
+	rows, err = r.DB.
+		Model(&DocumentChunk{}).
+		Where("embedding IS NULL OR (text = '') IS NOT FALSE OR embedding <-> ? = 0", zeroVector).
+		Rows()
 	if err != nil {
 		return err
 	}
