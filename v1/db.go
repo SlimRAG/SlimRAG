@@ -214,3 +214,37 @@ func (r *RAG) GetDocumentChunk(id string) (*DocumentChunk, error) {
 	}
 	return &c, nil
 }
+
+func (r *RAG) FindInvalidChunks(ctx context.Context, cb func(chunk *DocumentChunk)) error {
+	bar := progressbar.Default(-1)
+	bar.Describe("Cleaning up chunks")
+	defer func() { _ = bar.Finish() }()
+
+	var rows *sql.Rows
+	rows, err := r.DB.Model(&DocumentChunk{}).Where("embedding IS NULL OR (text = '') IS NOT FALSE").Rows()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		var chunk DocumentChunk
+		err = r.DB.ScanRows(rows, &chunk)
+		if err != nil {
+			return err
+		}
+		cb(&chunk)
+	}
+
+	return nil
+}
+
+func (r *RAG) DeleteChunk(id uint64) error {
+	return r.DB.Where("id = ?", id).Delete(&DocumentChunk{}).Error
+}

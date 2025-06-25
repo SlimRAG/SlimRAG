@@ -39,10 +39,58 @@ var cmd = &cli.Command{
 		searchCmd,
 		getChunkCmd,
 		generateScriptCmd,
+		cleanupCmd,
 	},
 }
 
 var trimSpace = cli.StringConfig{TrimSpace: true}
+
+var cleanupCmd = &cli.Command{
+	Name: "cleanup",
+	Flags: []cli.Flag{
+		&cli.StringFlag{
+			Name:    "dsn",
+			Sources: cli.NewValueSourceChain(cli.EnvVar("RAG_DSN")),
+		},
+		&cli.BoolFlag{
+			Name:    "delete",
+			Aliases: []string{"d"},
+		},
+	},
+	Action: func(ctx context.Context, command *cli.Command) error {
+		dsn := command.String("dsn")
+		db, err := rag.OpenDB(dsn)
+		if err != nil {
+			return err
+		}
+		r := rag.RAG{DB: db}
+
+		ids := make([]uint64, 0)
+
+		tw := table.NewWriter()
+		tw.AppendHeader(table.Row{"ID", "Raw document", "Text", "Embedding"})
+		err = r.FindInvalidChunks(ctx, func(chunk *rag.DocumentChunk) {
+			tw.AppendRow(table.Row{chunk.ID, chunk.RawDocument, chunk.Text, chunk.Embedding})
+			ids = append(ids, chunk.ID)
+		})
+		if err != nil {
+			return err
+		}
+		fmt.Println(tw.Render())
+
+		if command.Bool("delete") {
+			log.Info().Int("count", len(ids)).Msg("Deleting invalid chunks")
+			for _, id := range ids {
+				err = r.DeleteChunk(id)
+				if err != nil {
+					log.Error().Err(err).Uint64("chunk_id", id).Msgf("Delete chunk failed")
+				}
+			}
+		}
+
+		return nil
+	},
+}
 
 var generateScriptCmd = &cli.Command{
 	Name:    "generate-script",
