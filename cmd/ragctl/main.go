@@ -470,7 +470,7 @@ var askCmd = &cli.Command{
 		}
 		fmt.Println(tw.Render())
 
-		answer, err := r.Ask(query, chunks)
+		answer, err := r.Ask(ctx, query, chunks)
 		if err != nil {
 			return err
 		}
