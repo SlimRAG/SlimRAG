@@ -23,11 +23,11 @@ import (
 )
 
 type DocumentChunk struct {
-	ID          uint64           `gorm:"primaryKey"`
-	Document    string           `gorm:"not null"`
-	RawDocument string           `gorm:"not null"`
-	Text        string           `gorm:"not null" json:"text,omitzero"`
-	Embedding   *pgvector.Vector `gorm:"type:vector(4096)" json:"embedding,omitzero"`
+	ID          uint64               `gorm:"primaryKey"`
+	Document    string               `gorm:"not null"`
+	RawDocument string               `gorm:"not null"`
+	Text        string               `gorm:"not null" json:"text,omitzero"`
+	Embedding   *pgvector.HalfVector `gorm:"type:halfvec(4000)" json:"embedding,omitzero"`
 }
 
 func hashString(s string) uint64 {
@@ -151,6 +151,7 @@ func (r *RAG) ComputeEmbeddings(ctx context.Context, onlyEmpty bool, workers int
 				Input: openai.EmbeddingNewParamsInputUnion{
 					OfString: openai.String(chunk.Text),
 				},
+				Dimensions:     openai.Int(4000),
 				EncodingFormat: openai.EmbeddingNewParamsEncodingFormatFloat,
 			})
 			if err != nil {
@@ -159,12 +160,7 @@ func (r *RAG) ComputeEmbeddings(ctx context.Context, onlyEmpty bool, workers int
 			}
 
 			embedding := rsp.Data[0].Embedding
-			x := make([]float32, len(embedding))
-			for i, v := range embedding {
-				x[i] = float32(v)
-			}
-
-			v := pgvector.NewVector(x)
+			v := pgvector.NewHalfVector(castDown(embedding))
 			chunk.Embedding = &v
 
 			r.DB.Save(&chunk)
@@ -174,6 +170,14 @@ func (r *RAG) ComputeEmbeddings(ctx context.Context, onlyEmpty bool, workers int
 	wg.Wait()
 	p.Wait()
 	return nil
+}
+
+func castDown(e []float64) []float32 {
+	x := make([]float32, 4000)
+	for i := range x {
+		x[i] = float32(e[i])
+	}
+	return x
 }
 
 func (r *RAG) QueryDocuments(ctx context.Context, query string, limit int) ([]DocumentChunk, error) {
