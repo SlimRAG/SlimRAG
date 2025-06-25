@@ -57,6 +57,12 @@ func (s *Server) searchHandler(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+
+	chunks, err = s.r.Rerank(p.Query, chunks, p.Limit)
+	if err != nil {
+		return err
+	}
+
 	return c.JSON(http.StatusOK, echo.Map{
 		"count":  len(chunks),
 		"chunks": chunks,
