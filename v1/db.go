@@ -190,12 +190,7 @@ func (r *RAG) QueryDocuments(ctx context.Context, query string, limit int) ([]Do
 	if err != nil {
 		return nil, err
 	}
-
-	e := rsp.Data[0].Embedding
-	queryEmbedding := make([]float32, len(e))
-	for i := range rsp.Data[0].Embedding {
-		queryEmbedding[i] = float32(e[i])
-	}
+	queryEmbedding := castDown(rsp.Data[0].Embedding)
 
 	var chunks []DocumentChunk
 	err = r.DB.Clauses(clause.OrderBy{
@@ -203,7 +198,9 @@ func (r *RAG) QueryDocuments(ctx context.Context, query string, limit int) ([]Do
 			SQL:  "embedding <-> ?",
 			Vars: []interface{}{pgvector.NewVector(queryEmbedding)},
 		}},
-	).Select("id", "document", "raw_document", "chunk_id").Limit(limit).Find(&chunks).Error
+	).Select([]string{"id", "document", "raw_document"}).
+		Limit(limit).
+		Find(&chunks).Error
 	if err != nil {
 		return nil, err
 	}

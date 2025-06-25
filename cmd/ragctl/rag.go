@@ -442,12 +442,9 @@ var searchCmd = &cli.Command{
 		}
 
 		tw := table.NewWriter()
-		tw.AppendHeader(table.Row{"ID", "Raw document", "Chunk ID"})
+		tw.AppendHeader(table.Row{"ID", "Raw document"})
 		for _, chunk := range chunks {
-			tw.AppendRow(table.Row{
-				chunk.ID,
-				chunk.RawDocument,
-			})
+			tw.AppendRow(table.Row{chunk.ID, chunk.Document})
 		}
 		fmt.Println(tw.Render())
 		return nil
