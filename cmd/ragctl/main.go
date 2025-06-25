@@ -61,7 +61,7 @@ var cleanupCmd = &cli.Command{
 		}
 		r := rag.RAG{DB: db}
 
-		ids := make([]uint64, 0)
+		ids := make([]string, 0)
 
 		tw := table.NewWriter()
 		tw.AppendHeader(table.Row{"ID", "Raw document", "Text", "Embedding"})
@@ -79,7 +79,7 @@ var cleanupCmd = &cli.Command{
 			for _, id := range ids {
 				err = r.DeleteChunk(id)
 				if err != nil {
-					log.Error().Err(err).Uint64("chunk_id", id).Msgf("Delete chunk failed")
+					log.Error().Err(err).Str("chunk_id", id).Msgf("Delete chunk failed")
 				}
 			}
 		}

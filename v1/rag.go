@@ -3,6 +3,7 @@ package rag
 import (
 	"context"
 	"database/sql"
+	"encoding/hex"
 	"strings"
 	"sync"
 
@@ -23,7 +24,7 @@ import (
 )
 
 type DocumentChunk struct {
-	ID          uint64               `gorm:"primaryKey"`
+	ID          string               `gorm:"primaryKey"`
 	Document    string               `gorm:"not null"`
 	RawDocument string               `gorm:"not null"`
 	Text        string               `gorm:"not null" json:"text,omitzero"`
@@ -31,11 +32,12 @@ type DocumentChunk struct {
 	Index       int                  `gorm:"-:all" json:"index"`
 }
 
-func hashString(s string) uint64 {
+func hashString(s string) string {
 	h := xxhash.New()
 	_, err := h.Write([]byte(s))
 	assert.NoError(err)
-	return h.Sum64()
+	b := h.Sum(nil)
+	return hex.EncodeToString(b)
 }
 
 func (c *DocumentChunk) Fix(d *Document) {
@@ -100,20 +102,20 @@ func migrate(db *gorm.DB) error {
 		return errors.Wrap(err, "Failed to migrate document chunks")
 	}
 
-	err = db.Exec(`SET maintenance_work_mem = '8GB'`).Error
-	if err != nil {
-		return errors.Wrap(err, "Failed to set maintenance work mem")
-	}
+	//err = db.Exec(`SET maintenance_work_mem = '8GB'`).Error
+	//if err != nil {
+	//	return errors.Wrap(err, "Failed to set maintenance work mem")
+	//}
+	//
+	//err = db.Exec(`SET max_parallel_maintenance_workers = 32`).Error
+	//if err != nil {
+	//	return errors.Wrap(err, "Failed to set max_parallel_maintenance_workers")
+	//}
 
-	err = db.Exec(`SET max_parallel_maintenance_workers = 32`).Error
-	if err != nil {
-		return errors.Wrap(err, "Failed to set max_parallel_maintenance_workers")
-	}
-
-	err = db.Exec(`CREATE INDEX ON document_chunks USING hnsw (embedding halfvec_l2_ops)`).Error
-	if err != nil {
-		return errors.Wrap(err, "Failed to create index on document_chunks")
-	}
+	//err = db.Exec(`CREATE INDEX IF NOT EXISTS ON document_chunks USING hnsw (embedding halfvec_l2_ops)`).Error
+	//if err != nil {
+	//	return errors.Wrap(err, "Failed to create index on document_chunks")
+	//}
 
 	return nil
 }
@@ -123,10 +125,25 @@ func (r *RAG) UpsertDocumentChunks(document *Document) error {
 		return nil
 	}
 
+	counts := make(map[string]int)
+	for _, chunk := range document.Chunks {
+		counts[chunk.ID]++
+	}
+
+	chunks := make([]*DocumentChunk, 0, len(document.Chunks))
+	for _, c := range document.Chunks {
+		count := counts[c.ID]
+		if count == 1 {
+			chunks = append(chunks, c)
+		} else {
+			counts[c.ID] = count - 1
+		}
+	}
+
 	return r.DB.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "id"}},
-		DoUpdates: clause.AssignmentColumns([]string{"document", "raw_document"}),
-	}).Create(&document.Chunks).Error
+		UpdateAll: true,
+	}).Create(&chunks).Error
 }
 
 func (r *RAG) ComputeEmbeddings(ctx context.Context, onlyEmpty bool, workers int) error {
@@ -178,7 +195,7 @@ func (r *RAG) ComputeEmbeddings(ctx context.Context, onlyEmpty bool, workers int
 				EncodingFormat: openai.EmbeddingNewParamsEncodingFormatFloat,
 			})
 			if err != nil {
-				log.Error().Err(err).Stack().Uint64("chunk_id", chunk.ID).Msg("Compute embedding")
+				log.Error().Err(err).Stack().Str("chunk_id", chunk.ID).Msg("Compute embedding")
 				return
 			}
 
@@ -276,12 +293,12 @@ func (r *RAG) FindInvalidChunks(ctx context.Context, cb func(chunk *DocumentChun
 	return nil
 }
 
-func (r *RAG) DeleteChunk(id uint64) error {
+func (r *RAG) DeleteChunk(id string) error {
 	return r.DB.Where("id = ?", id).Delete(&DocumentChunk{}).Error
 }
 
 func (r *RAG) Rerank(query string, chunks []DocumentChunk, topN int) ([]DocumentChunk, error) {
-	m := make(map[uint64]int)
+	m := make(map[string]int)
 	docs := make([]string, len(chunks))
 	for i, c := range chunks {
 		docs[i] = c.Text
