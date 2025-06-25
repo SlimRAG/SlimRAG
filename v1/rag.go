@@ -56,12 +56,14 @@ func (d *Document) Fix() {
 }
 
 type RAG struct {
-	DB             *gorm.DB
-	Client         *openai.Client
-	Model          string
-	OSS            *minio.Client
-	RerankerClient *InfinityClient
-	RerankerModel  string
+	DB              *gorm.DB
+	OSS             *minio.Client
+	EmbeddingClient *openai.Client
+	EmbeddingModel  string
+	RerankerClient  *InfinityClient
+	RerankerModel   string
+	AssistantClient *openai.Client
+	AssistantModel  string
 }
 
 func OpenDB(dsn string) (*gorm.DB, error) {
@@ -148,8 +150,8 @@ func (r *RAG) ComputeEmbeddings(ctx context.Context, onlyEmpty bool, workers int
 			}()
 
 			var rsp *openai.CreateEmbeddingResponse
-			rsp, err = r.Client.Embeddings.New(ctx, openai.EmbeddingNewParams{
-				Model: r.Model,
+			rsp, err = r.EmbeddingClient.Embeddings.New(ctx, openai.EmbeddingNewParams{
+				Model: r.EmbeddingModel,
 				Input: openai.EmbeddingNewParamsInputUnion{
 					OfString: openai.String(chunk.Text),
 				},
@@ -183,8 +185,8 @@ func castDown(e []float64) []float32 {
 }
 
 func (r *RAG) QueryDocumentChunks(ctx context.Context, query string, limit int) ([]DocumentChunk, error) {
-	rsp, err := r.Client.Embeddings.New(ctx, openai.EmbeddingNewParams{
-		Model: r.Model,
+	rsp, err := r.EmbeddingClient.Embeddings.New(ctx, openai.EmbeddingNewParams{
+		Model: r.EmbeddingModel,
 		Input: openai.EmbeddingNewParamsInputUnion{
 			OfString: openai.String(query),
 		},
@@ -282,4 +284,19 @@ func (r *RAG) Rerank(query string, chunks []DocumentChunk, topN int) ([]Document
 		cs[i] = chunks[m[hashString(x.Document)]]
 	}
 	return cs, nil
+}
+
+func (r *RAG) Ask(ctx context.Context, query string, chunks []DocumentChunk) (string, error) {
+	prompt := BuildPrompt(query, chunks)
+	c, err := r.EmbeddingClient.Completions.New(ctx, openai.CompletionNewParams{
+		Model:  openai.CompletionNewParamsModel(r.AssistantModel),
+		Prompt: openai.CompletionNewParamsPromptUnion{OfString: openai.String(prompt)},
+	})
+	if err != nil {
+		return "", err
+	}
+	if len(c.Choices) > 0 {
+		return c.Choices[0].Text, nil
+	}
+	return "", errors.New("no choices returned from completion")
 }
