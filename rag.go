@@ -320,12 +320,18 @@ var computeCmd = &cli.Command{
 			Name:  "force",
 			Value: false,
 		},
+		&cli.IntFlag{
+			Name:    "workers",
+			Aliases: []string{"j"},
+			Value:   3,
+		},
 	},
 	Action: func(ctx context.Context, command *cli.Command) error {
 		baseURL := command.String("base_url")
 		model := command.String("model")
 		dsn := command.String("dsn")
 		force := command.Bool("force")
+		workers := command.Int("workers")
 
 		db, err := rag.OpenDB(dsn)
 		if err != nil {
@@ -335,7 +341,7 @@ var computeCmd = &cli.Command{
 		client := openai.NewClient(option.WithBaseURL(baseURL))
 		r := rag.RAG{DB: db, Client: &client, Model: model}
 
-		return r.ComputeEmbeddings(ctx, !force)
+		return r.ComputeEmbeddings(ctx, !force, workers)
 	},
 }
 
@@ -424,7 +430,11 @@ var getChunkCmd = &cli.Command{
 
 		r := rag.RAG{DB: db}
 		c, err := r.GetDocumentChunk(id)
-		fmt.Println(c.Text)
+		buf, err := json.Marshal(c)
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(buf))
 		return nil
 	},
 }

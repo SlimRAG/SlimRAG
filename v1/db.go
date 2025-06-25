@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"strings"
+	"sync"
 
 	"github.com/cespare/xxhash"
 	"github.com/cockroachdb/errors"
@@ -11,7 +12,9 @@ import (
 	"github.com/negrel/assert"
 	"github.com/openai/openai-go"
 	"github.com/pgvector/pgvector-go"
+	"github.com/rs/zerolog/log"
 	"github.com/schollz/progressbar/v3"
+	"github.com/sourcegraph/conc/pool"
 	gormzerolog "github.com/vitaliy-art/gorm-zerolog"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -103,7 +106,7 @@ func (r *RAG) UpsertDocumentChunks(document *Document) error {
 	}).Create(&document.Chunks).Error
 }
 
-func (r *RAG) ComputeEmbeddings(ctx context.Context, onlyEmpty bool) error {
+func (r *RAG) ComputeEmbeddings(ctx context.Context, onlyEmpty bool, workers int) error {
 	var err error
 	var rows *sql.Rows
 	if onlyEmpty {
@@ -120,42 +123,56 @@ func (r *RAG) ComputeEmbeddings(ctx context.Context, onlyEmpty bool) error {
 	bar.Describe("Computing embeddings")
 	defer func() { _ = bar.Finish() }()
 
-	for rows.Next() {
-		_ = bar.Add(1)
+	p := pool.New().WithMaxGoroutines(workers)
+	var wg sync.WaitGroup
 
+	for rows.Next() {
 		var chunk DocumentChunk
 		err = r.DB.ScanRows(rows, &chunk)
 		if err != nil {
 			return err
 		}
-		if chunk.Embedding != nil {
+
+		if chunk.Embedding != nil || len(chunk.Text) == 0 {
+			_ = bar.Add(1)
 			continue
 		}
 
-		var rsp *openai.CreateEmbeddingResponse
-		rsp, err = r.Client.Embeddings.New(ctx, openai.EmbeddingNewParams{
-			Model: r.Model,
-			Input: openai.EmbeddingNewParamsInputUnion{
-				OfString: openai.String(chunk.Text),
-			},
-			EncodingFormat: openai.EmbeddingNewParamsEncodingFormatFloat,
+		p.Go(func() {
+			wg.Add(1)
+			defer func() {
+				_ = bar.Add(1)
+				wg.Done()
+			}()
+
+			var rsp *openai.CreateEmbeddingResponse
+			rsp, err = r.Client.Embeddings.New(ctx, openai.EmbeddingNewParams{
+				Model: r.Model,
+				Input: openai.EmbeddingNewParamsInputUnion{
+					OfString: openai.String(chunk.Text),
+				},
+				EncodingFormat: openai.EmbeddingNewParamsEncodingFormatFloat,
+			})
+			if err != nil {
+				log.Error().Err(err).Stack().Uint64("chunk_id", chunk.ID).Msg("Compute embedding")
+				return
+			}
+
+			embedding := rsp.Data[0].Embedding
+			x := make([]float32, len(embedding))
+			for i, v := range embedding {
+				x[i] = float32(v)
+			}
+
+			v := pgvector.NewVector(x)
+			chunk.Embedding = &v
+
+			r.DB.Save(&chunk)
 		})
-		if err != nil {
-			return errors.Wrapf(err, "compute embedding for chunk %d", chunk.ID)
-		}
-
-		embedding := rsp.Data[0].Embedding
-		x := make([]float32, len(embedding))
-		for i, v := range embedding {
-			x[i] = float32(v)
-		}
-
-		v := pgvector.NewVector(x)
-		chunk.Embedding = &v
-
-		r.DB.Save(&chunk)
 	}
 
+	wg.Wait()
+	p.Wait()
 	return nil
 }
 
