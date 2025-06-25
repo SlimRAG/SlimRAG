@@ -475,11 +475,11 @@ var getChunkCmd = &cli.Command{
 
 		r := rag.RAG{DB: db}
 		c, err := r.GetDocumentChunk(id)
-		buf, err := json.Marshal(c)
 		if err != nil {
 			return err
 		}
-		fmt.Println(string(buf))
+		fmt.Printf("id=%v document='%s' raw_document='%s'\n", c.ID, c.Document, c.RawDocument)
+		fmt.Println(c.Text)
 		return nil
 	},
 }
