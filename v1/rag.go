@@ -101,22 +101,6 @@ func migrate(db *gorm.DB) error {
 	if err != nil {
 		return errors.Wrap(err, "Failed to migrate document chunks")
 	}
-
-	//err = db.Exec(`SET maintenance_work_mem = '8GB'`).Error
-	//if err != nil {
-	//	return errors.Wrap(err, "Failed to set maintenance work mem")
-	//}
-	//
-	//err = db.Exec(`SET max_parallel_maintenance_workers = 32`).Error
-	//if err != nil {
-	//	return errors.Wrap(err, "Failed to set max_parallel_maintenance_workers")
-	//}
-
-	//err = db.Exec(`CREATE INDEX IF NOT EXISTS ON document_chunks USING hnsw (embedding halfvec_l2_ops)`).Error
-	//if err != nil {
-	//	return errors.Wrap(err, "Failed to create index on document_chunks")
-	//}
-
 	return nil
 }
 
