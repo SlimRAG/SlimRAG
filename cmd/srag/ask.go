@@ -71,7 +71,7 @@ var askCmd = &cli.Command{
 		}
 
 		tw := table.NewWriter()
-		tw.AppendHeader(table.Row{"ID", "Raw document"})
+		tw.AppendHeader(table.Row{"Chunk ID", "Document"})
 		for _, chunk := range chunks {
 			tw.AppendRow(table.Row{chunk.ID, chunk.Document})
 		}
