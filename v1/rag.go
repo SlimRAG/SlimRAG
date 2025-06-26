@@ -3,14 +3,10 @@ package rag
 import (
 	"context"
 	"database/sql"
-	"encoding/hex"
-	"strings"
 	"sync"
 
-	"github.com/cespare/xxhash"
 	"github.com/cockroachdb/errors"
 	"github.com/minio/minio-go/v7"
-	"github.com/negrel/assert"
 	"github.com/openai/openai-go"
 	"github.com/pgvector/pgvector-go"
 	"github.com/rs/zerolog/log"
@@ -22,45 +18,6 @@ import (
 	"gorm.io/gorm/clause"
 	gormlogger "gorm.io/gorm/logger"
 )
-
-type DocumentChunk struct {
-	ID          string               `gorm:"primaryKey"`
-	Document    string               `gorm:"not null"`
-	RawDocument string               `gorm:"not null"`
-	Text        string               `gorm:"not null" json:"text,omitzero"`
-	Embedding   *pgvector.HalfVector `gorm:"type:halfvec(2560)" json:"embedding,omitzero"`
-	Index       int                  `gorm:"-:all" json:"index"`
-}
-
-func hashString(s string) string {
-	h := xxhash.New()
-	_, err := h.Write([]byte(s))
-	assert.NoError(err)
-	b := h.Sum(nil)
-	return hex.EncodeToString(b)
-}
-
-func (c *DocumentChunk) Fix(d *Document) {
-	c.Text = strings.ReplaceAll(c.Text, "\u0000", "")
-	c.ID = hashString(c.Text)
-	c.Document = d.Document
-	c.RawDocument = d.RawDocument
-}
-
-type Document struct {
-	FileName    string           `json:"file_name"`
-	Document    string           `json:"document"`
-	RawDocument string           `json:"raw_document"`
-	Chunks      []*DocumentChunk `json:"chunks"`
-}
-
-func (d *Document) Fix() {
-	d.Document = strings.TrimSuffix(d.FileName, ".md")
-	d.RawDocument = d.FileName
-	for _, chunk := range d.Chunks {
-		chunk.Fix(d)
-	}
-}
 
 type RAG struct {
 	DB              *gorm.DB
@@ -175,7 +132,7 @@ func (r *RAG) ComputeEmbeddings(ctx context.Context, onlyEmpty bool, workers int
 				Input: openai.EmbeddingNewParamsInputUnion{
 					OfString: openai.String(chunk.Text),
 				},
-				Dimensions:     openai.Int(2560),
+				Dimensions:     openai.Int(dims),
 				EncodingFormat: openai.EmbeddingNewParamsEncodingFormatFloat,
 			})
 			if err != nil {
@@ -183,8 +140,8 @@ func (r *RAG) ComputeEmbeddings(ctx context.Context, onlyEmpty bool, workers int
 				return
 			}
 
-			v := pgvector.NewHalfVector(castDown(rsp.Data[0].Embedding))
-			chunk.Embedding = &v
+			hv := pgvector.NewHalfVector(toFloat32Slice(rsp.Data[0].Embedding))
+			chunk.Embedding = &hv
 
 			r.DB.Save(&chunk)
 		})
@@ -195,7 +152,7 @@ func (r *RAG) ComputeEmbeddings(ctx context.Context, onlyEmpty bool, workers int
 	return nil
 }
 
-func castDown(v []float64) []float32 {
+func toFloat32Slice(v []float64) []float32 {
 	x := make([]float32, len(v))
 	for i, f := range v {
 		x[i] = float32(f)
@@ -209,12 +166,12 @@ func (r *RAG) QueryDocumentChunks(ctx context.Context, query string, limit int) 
 		Input: openai.EmbeddingNewParamsInputUnion{
 			OfString: openai.String(query),
 		},
-		Dimensions: openai.Int(2560),
+		Dimensions: openai.Int(dims),
 	})
 	if err != nil {
 		return nil, err
 	}
-	queryEmbedding := castDown(rsp.Data[0].Embedding)
+	queryEmbedding := toFloat32Slice(rsp.Data[0].Embedding)
 
 	var chunks []DocumentChunk
 	err = r.DB.Clauses(clause.OrderBy{
@@ -244,8 +201,6 @@ func (r *RAG) FindInvalidChunks(ctx context.Context, cb func(chunk *DocumentChun
 	bar := progressbar.Default(-1)
 	bar.Describe("Cleaning up chunks")
 	defer func() { _ = bar.Finish() }()
-
-	zeroVector := pgvector.NewHalfVector(make([]float32, 2560))
 
 	var err error
 	var rows *sql.Rows
@@ -307,8 +262,8 @@ func (r *RAG) Rerank(query string, chunks []DocumentChunk, topN int) ([]Document
 }
 
 func (r *RAG) Ask(ctx context.Context, query string, chunks []DocumentChunk) (string, error) {
-	prompt := BuildPrompt(query, chunks)
-	c, err := r.EmbeddingClient.Completions.New(ctx, openai.CompletionNewParams{
+	prompt := buildPrompt(query, chunks)
+	c, err := r.AssistantClient.Completions.New(ctx, openai.CompletionNewParams{
 		Model:  openai.CompletionNewParamsModel(r.AssistantModel),
 		Prompt: openai.CompletionNewParamsPromptUnion{OfString: openai.String(prompt)},
 	})
