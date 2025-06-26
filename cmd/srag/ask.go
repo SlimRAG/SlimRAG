@@ -26,7 +26,8 @@ var askCmd = &cli.Command{
 		flagRerankerModel,
 		flagAssistantBaseURL,
 		flagAssistantModel,
-		&cli.IntFlag{Name: "limit", Value: 10},
+		&cli.IntFlag{Name: "limit", Value: 40},
+		&cli.IntFlag{Name: "top-n", Value: 10},
 	},
 	Action: func(ctx context.Context, command *cli.Command) error {
 		query, err := getArgumentQuery(command)
@@ -42,6 +43,7 @@ var askCmd = &cli.Command{
 		assistantBaseURL := command.String("assistant-base-url")
 		assistantModel := command.String("assistant-model")
 		limit := command.Int("limit")
+		topN := command.Int("top-n")
 
 		db, err := rag.OpenDB(dsn)
 		if err != nil {
@@ -65,7 +67,7 @@ var askCmd = &cli.Command{
 			return err
 		}
 
-		chunks, err = r.Rerank(query, chunks, limit)
+		chunks, err = r.Rerank(query, chunks, topN)
 		if err != nil {
 			return err
 		}
