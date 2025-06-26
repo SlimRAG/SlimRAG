@@ -1,0 +1,66 @@
+package main
+
+import (
+	"context"
+	"net/http"
+	"time"
+
+	"github.com/cockroachdb/errors"
+	"github.com/openai/openai-go"
+	"github.com/openai/openai-go/option"
+	"github.com/urfave/cli/v3"
+
+	"github.com/fanyang89/rag/v1"
+)
+
+var serveCmd = &cli.Command{
+	Name:  "serve",
+	Usage: "start rag server",
+	Flags: []cli.Flag{
+		&cli.StringFlag{
+			Name:    "bind",
+			Aliases: []string{"a", "l"},
+			Value:   ":5000",
+		},
+		&cli.StringFlag{
+			Name:    "dsn",
+			Sources: cli.ValueSourceChain{Chain: []cli.ValueSource{cli.EnvVar("RAG_DSN")}},
+		},
+		&cli.StringFlag{
+			Name:    "base_url",
+			Sources: cli.ValueSourceChain{Chain: []cli.ValueSource{cli.EnvVar("EMBEDDING_BASE_URL")}},
+		},
+		&cli.StringFlag{
+			Name:    "model",
+			Sources: cli.ValueSourceChain{Chain: []cli.ValueSource{cli.EnvVar("EMBEDDING_MODEL")}},
+		},
+	},
+	Action: func(ctx context.Context, command *cli.Command) error {
+		baseURL := command.String("base_url")
+		model := command.String("model")
+		dsn := command.String("dsn")
+
+		db, err := rag.OpenDB(dsn)
+		if err != nil {
+			return err
+		}
+
+		client := openai.NewClient(option.WithBaseURL(baseURL))
+		r := &rag.RAG{DB: db, EmbeddingClient: &client, EmbeddingModel: model}
+
+		s := rag.NewServer(r)
+		go func() {
+			select {
+			case <-ctx.Done():
+				closeCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				_ = s.Shutdown(closeCtx)
+			}
+		}()
+		err = s.Start(command.String("bind"))
+		if err == nil || errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return err
+	},
+}
