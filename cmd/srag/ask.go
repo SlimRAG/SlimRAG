@@ -39,6 +39,8 @@ var askCmd = &cli.Command{
 		embeddingModel := command.String("embedding-model")
 		rerankerBaseURL := command.String("reranker-base-url")
 		rerankerModel := command.String("reranker-model")
+		assistantBaseURL := command.String("assistant-base-url")
+		assistantModel := command.String("assistant-model")
 		limit := command.Int("limit")
 
 		db, err := rag.OpenDB(dsn)
@@ -46,14 +48,16 @@ var askCmd = &cli.Command{
 			return err
 		}
 
-		client := openai.NewClient(option.WithBaseURL(embeddingBaseURL))
-		rerankerClient := rag.NewInfinityClient(rerankerBaseURL)
+		embeddingClient := openai.NewClient(option.WithBaseURL(embeddingBaseURL))
+		assistantClient := openai.NewClient(option.WithBaseURL(assistantBaseURL))
 		r := rag.RAG{
 			DB:              db,
-			EmbeddingClient: &client,
+			EmbeddingClient: &embeddingClient,
 			EmbeddingModel:  embeddingModel,
-			RerankerClient:  rerankerClient,
+			RerankerClient:  rag.NewInfinityClient(rerankerBaseURL),
 			RerankerModel:   rerankerModel,
+			AssistantClient: &assistantClient,
+			AssistantModel:  assistantModel,
 		}
 
 		chunks, err := r.QueryDocumentChunks(ctx, query, limit)

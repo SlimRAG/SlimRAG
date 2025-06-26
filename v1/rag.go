@@ -183,9 +183,7 @@ func (r *RAG) QueryDocumentChunks(ctx context.Context, query string, limit int) 
 			SQL:  "embedding <-> ?",
 			Vars: []interface{}{pgvector.NewVector(queryEmbedding)},
 		}},
-	).Select([]string{"id", "document", "raw_document"}).
-		Limit(limit).
-		Find(&chunks).Error
+	).Limit(limit).Find(&chunks).Error
 	if err != nil {
 		return nil, err
 	}
