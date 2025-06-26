@@ -1,4 +1,4 @@
-version: '3'
+version: "3"
 
 dotenv:
   - .env
@@ -6,19 +6,15 @@ dotenv:
 tasks:
   default:
     cmds:
-      - task: test
-
-  test:
-    cmds:
-      - go test ./...
+      - task: build
 
   build:
     cmds:
-      - go build rag.go
+      - go build ./cmd/ragctl
 
   build-linux:
     env:
       GOOS: linux
       GOARCH: amd64
     cmds:
-      - go build rag.go
+      - go build ./cmd/ragctl
