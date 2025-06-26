@@ -28,7 +28,7 @@ type DocumentChunk struct {
 	Document    string               `gorm:"not null"`
 	RawDocument string               `gorm:"not null"`
 	Text        string               `gorm:"not null" json:"text,omitzero"`
-	Embedding   *pgvector.HalfVector `gorm:"type:halfvec(4000)" json:"embedding,omitzero"`
+	Embedding   *pgvector.HalfVector `gorm:"type:halfvec(2560)" json:"embedding,omitzero"`
 	Index       int                  `gorm:"-:all" json:"index"`
 }
 
@@ -191,7 +191,7 @@ func (r *RAG) ComputeEmbeddings(ctx context.Context, onlyEmpty bool, workers int
 				Input: openai.EmbeddingNewParamsInputUnion{
 					OfString: openai.String(chunk.Text),
 				},
-				Dimensions:     openai.Int(4000),
+				Dimensions:     openai.Int(2560),
 				EncodingFormat: openai.EmbeddingNewParamsEncodingFormatFloat,
 			})
 			if err != nil {
@@ -225,7 +225,7 @@ func (r *RAG) QueryDocumentChunks(ctx context.Context, query string, limit int) 
 		Input: openai.EmbeddingNewParamsInputUnion{
 			OfString: openai.String(query),
 		},
-		Dimensions: openai.Int(4000),
+		Dimensions: openai.Int(2560),
 	})
 	if err != nil {
 		return nil, err
@@ -261,7 +261,7 @@ func (r *RAG) FindInvalidChunks(ctx context.Context, cb func(chunk *DocumentChun
 	bar.Describe("Cleaning up chunks")
 	defer func() { _ = bar.Finish() }()
 
-	zeroVector := pgvector.NewHalfVector(make([]float32, 4000))
+	zeroVector := pgvector.NewHalfVector(make([]float32, 2560))
 
 	var err error
 	var rows *sql.Rows
