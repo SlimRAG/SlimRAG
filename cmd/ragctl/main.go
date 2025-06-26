@@ -22,6 +22,7 @@ var cmd = &cli.Command{
 		serveCmd,
 		askCmd,
 		getChunkCmd,
+		healthCmd,
 	},
 }
 

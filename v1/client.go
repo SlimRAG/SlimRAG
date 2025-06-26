@@ -74,7 +74,7 @@ func (c *InfinityClient) Rerank(req *RerankRequest) (*RerankResponse, error) {
 		return nil, err
 	}
 	if code := rsp.StatusCode(); code != http.StatusOK {
-		return nil, errors.Newf("status code: %d", code)
+		return nil, errors.Newf("status code: %d, response: '%s'", code, rsp.String())
 	}
 	return &response, nil
 }
