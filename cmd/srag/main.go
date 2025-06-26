@@ -13,7 +13,7 @@ import (
 )
 
 var cmd = &cli.Command{
-	Name:  "ragctl",
+	Name:  "SilmRAG",
 	Usage: "RAG for minimalists",
 	Commands: []*cli.Command{
 		generateCmd,
