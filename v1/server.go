@@ -71,8 +71,8 @@ func (s *Server) searchHandler(c echo.Context) error {
 
 func (s *Server) homeHandler(c echo.Context) error {
 	return c.JSON(http.StatusOK, echo.Map{
-		"name":    "SilmRAG Server",
+		"name":    "SlimRAG Server",
 		"version": "0.1.0",
-		"URL":     "https://github.com/SilmRAG/SilmRAG",
+		"URL":     "https://github.com/SlimRAG/SlimRAG",
 	})
 }
