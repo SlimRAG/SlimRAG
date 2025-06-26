@@ -22,31 +22,27 @@ var serveCmd = &cli.Command{
 			Aliases: []string{"a", "l"},
 			Value:   ":5000",
 		},
-		&cli.StringFlag{
-			Name:    "dsn",
-			Sources: cli.NewValueSourceChain(cli.EnvVar("RAG_DSN")),
-		},
-		&cli.StringFlag{
-			Name:    "base_url",
-			Sources: cli.NewValueSourceChain(cli.EnvVar("EMBEDDING_BASE_URL")),
-		},
-		&cli.StringFlag{
-			Name:    "model",
-			Sources: cli.NewValueSourceChain(cli.EnvVar("EMBEDDING_MODEL")),
-		},
+		flagDSN,
+		flagEmbeddingBaseURL,
+		flagEmbeddingModel,
+		flagRerankerBaseURL,
+		flagRerankerModel,
+		flagAssistantBaseURL,
+		flagAssistantModel,
 	},
 	Action: func(ctx context.Context, command *cli.Command) error {
-		baseURL := command.String("base_url")
-		model := command.String("model")
 		dsn := command.String("dsn")
+		embeddingBaseURL := command.String("embedding-base-url")
+		embeddingModel := command.String("embedding-model")
+		bind := command.String("bind")
 
 		db, err := rag.OpenDB(dsn)
 		if err != nil {
 			return err
 		}
 
-		client := openai.NewClient(option.WithBaseURL(baseURL))
-		r := &rag.RAG{DB: db, EmbeddingClient: &client, EmbeddingModel: model}
+		client := openai.NewClient(option.WithBaseURL(embeddingBaseURL))
+		r := &rag.RAG{DB: db, EmbeddingClient: &client, EmbeddingModel: embeddingModel}
 
 		s := rag.NewServer(r)
 		go func() {
@@ -57,7 +53,7 @@ var serveCmd = &cli.Command{
 				_ = s.Shutdown(closeCtx)
 			}
 		}()
-		err = s.Start(command.String("bind"))
+		err = s.Start(bind)
 		if err == nil || errors.Is(err, http.ErrServerClosed) {
 			return nil
 		}

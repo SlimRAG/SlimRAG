@@ -15,35 +15,55 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-var generateScriptCmd = &cli.Command{
-	Name:    "generate-script",
-	Usage:   "Generate .md from PDFs",
-	Aliases: []string{"gen", "generate"},
+var generateCmd = &cli.Command{
+	Name:    "generate",
+	Usage:   "Generate .md from PDFs and split them into text chunks",
+	Aliases: []string{"gen"},
 	Arguments: []cli.Argument{
 		&cli.StringArg{Name: "path", Config: trimSpace},
 	},
 	Flags: []cli.Flag{
-		&cli.StringFlag{Name: "rag-tools", Aliases: []string{"t", "tools"}, Config: trimSpace},
-		&cli.StringFlag{Name: "output", Aliases: []string{"o"}, Value: "-", Config: trimSpace},
-		&cli.BoolFlag{Name: "chunking", Value: true},
-		&cli.BoolFlag{Name: "mineru", Value: true},
-		&cli.StringFlag{Name: "chunking-recipe"},
+		&cli.StringFlag{
+			Name:     "rag-tools",
+			Aliases:  []string{"t", "tools"},
+			Required: true,
+			Config:   trimSpace,
+		},
+		&cli.StringFlag{
+			Name:    "output",
+			Aliases: []string{"o"},
+			Value:   "-",
+			Config:  trimSpace,
+		},
+		&cli.BoolFlag{
+			Name:  "chonkie",
+			Value: true,
+		},
+		&cli.BoolFlag{
+			Name:  "mineru",
+			Value: true,
+		},
+		&cli.StringFlag{
+			Name: "chonkie-recipe",
+		},
 	},
 	Action: func(ctx context.Context, command *cli.Command) error {
-		var err error
-
-		path := command.StringArg("path")
-		if path == "" {
-			return errors.New("path is required")
+		path, err := getArgumentPath(command)
+		if err != nil {
+			return err
 		}
+
 		toolPath := command.String("rag-tools")
-		chunkingRecipe := command.String("chunking-recipe")
+		chunkingRecipe := command.String("chonkie-recipe")
 		if chunkingRecipe == "" {
 			chunkingRecipe = filepath.Join(toolPath, "chonkie-recipes", "default_zh.json")
 		}
+		outputPath := command.String("output")
+		enableMinerU := command.Bool("mineru")
+		enableChonkie := command.Bool("chonkie")
 
 		var w io.Writer
-		if outputPath := command.String("output"); outputPath == "-" {
+		if outputPath == "-" {
 			w = os.Stdout
 		} else {
 			f, err := os.Create(outputPath)
@@ -96,7 +116,7 @@ var generateScriptCmd = &cli.Command{
 				if !errors.Is(err, fs.ErrNotExist) {
 					return err
 				}
-				if command.Bool("mineru") {
+				if enableMinerU {
 					_, err = fmt.Fprintf(w, "pueue add -- \"uv run%smineru --source modelscope -p '%s' -o '%s'\"\n",
 						toolArg, path, baseDir)
 					assert.NoError(err)
@@ -104,7 +124,7 @@ var generateScriptCmd = &cli.Command{
 			}
 
 			_, err = os.Stat(markdownFilePath)
-			if err == nil && command.Bool("chunking") {
+			if err == nil && enableChonkie {
 				outputPath := fmt.Sprintf("%s.chunks.json", markdownFilePath)
 				_, err = os.Stat(outputPath)
 				if err != nil {

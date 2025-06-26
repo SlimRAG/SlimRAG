@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/cockroachdb/errors"
 	"github.com/gobwas/glob"
 	"github.com/goccy/go-json"
 	"github.com/rs/zerolog/log"
@@ -24,31 +23,26 @@ var scanCmd = &cli.Command{
 		&cli.StringArg{Name: "path"},
 	},
 	Flags: []cli.Flag{
+		flagDSN,
 		&cli.StringFlag{
 			Name:    "glob",
 			Aliases: []string{"g"},
 			Value:   "*.md.chunks.json",
-		},
-		&cli.StringFlag{
-			Name:    "dsn",
-			Sources: cli.NewValueSourceChain(cli.EnvVar("RAG_DSN")),
 		},
 		&cli.BoolFlag{
 			Name: "dry-run",
 		},
 	},
 	Action: func(ctx context.Context, command *cli.Command) error {
-		dryRun := command.Bool("dry-run")
+		path, err := getArgumentPath(command)
+		if err != nil {
+			return err
+		}
 		dsn := command.String("dsn")
-		if dsn == "" {
-			return errors.New("dsn is required")
-		}
-		path := command.StringArg("path")
-		if path == "" {
-			return errors.New("path is required")
-		}
+		dryRun := command.Bool("dry-run")
+		globStr := command.String("glob")
 
-		g, err := glob.Compile(command.String("glob"))
+		g, err := glob.Compile(globStr)
 		if err != nil {
 			return err
 		}

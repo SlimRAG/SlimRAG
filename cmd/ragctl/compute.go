@@ -14,18 +14,9 @@ var computeCmd = &cli.Command{
 	Name:  "compute",
 	Usage: "Compute embeddings for files in the database",
 	Flags: []cli.Flag{
-		&cli.StringFlag{
-			Name:    "dsn",
-			Sources: cli.NewValueSourceChain(cli.EnvVar("RAG_DSN")),
-		},
-		&cli.StringFlag{
-			Name:    "base_url",
-			Sources: cli.NewValueSourceChain(cli.EnvVar("EMBEDDING_BASE_URL")),
-		},
-		&cli.StringFlag{
-			Name:    "model",
-			Sources: cli.NewValueSourceChain(cli.EnvVar("EMBEDDING_MODEL")),
-		},
+		flagDSN,
+		flagEmbeddingBaseURL,
+		flagEmbeddingModel,
 		&cli.BoolFlag{
 			Name:  "force",
 			Value: false,
@@ -37,9 +28,9 @@ var computeCmd = &cli.Command{
 		},
 	},
 	Action: func(ctx context.Context, command *cli.Command) error {
-		baseURL := command.String("base_url")
-		model := command.String("model")
 		dsn := command.String("dsn")
+		baseURL := command.String("embedding-base-url")
+		embeddingModel := command.String("embedding-model")
 		force := command.Bool("force")
 		workers := command.Int("workers")
 
@@ -48,8 +39,12 @@ var computeCmd = &cli.Command{
 			return err
 		}
 
-		client := openai.NewClient(option.WithBaseURL(baseURL))
-		r := rag.RAG{DB: db, EmbeddingClient: &client, EmbeddingModel: model}
+		embeddingClient := openai.NewClient(option.WithBaseURL(baseURL))
+		r := rag.RAG{
+			DB:              db,
+			EmbeddingClient: &embeddingClient,
+			EmbeddingModel:  embeddingModel,
+		}
 
 		return r.ComputeEmbeddings(ctx, !force, workers)
 	},

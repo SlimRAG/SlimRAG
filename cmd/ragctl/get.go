@@ -17,10 +17,7 @@ var getChunkCmd = &cli.Command{
 		&cli.StringArg{Name: "id", Config: trimSpace},
 	},
 	Flags: []cli.Flag{
-		&cli.StringFlag{
-			Name:    "dsn",
-			Sources: cli.NewValueSourceChain(cli.EnvVar("RAG_DSN")),
-		},
+		flagDSN,
 	},
 	Action: func(ctx context.Context, command *cli.Command) error {
 		id := command.StringArg("id")

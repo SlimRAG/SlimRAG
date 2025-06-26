@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/cockroachdb/errors"
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
@@ -20,42 +19,26 @@ var askCmd = &cli.Command{
 		&cli.StringArg{Name: "query", Config: trimSpace},
 	},
 	Flags: []cli.Flag{
-		&cli.StringFlag{
-			Name:    "dsn",
-			Sources: cli.NewValueSourceChain(cli.EnvVar("RAG_DSN")),
-		},
-		&cli.StringFlag{
-			Name:    "base_url",
-			Sources: cli.NewValueSourceChain(cli.EnvVar("EMBEDDING_BASE_URL")),
-		},
-		&cli.StringFlag{
-			Name:    "model",
-			Sources: cli.NewValueSourceChain(cli.EnvVar("EMBEDDING_MODEL")),
-		},
-		&cli.StringFlag{
-			Name:    "reranker_base_url",
-			Sources: cli.NewValueSourceChain(cli.EnvVar("RERANKER_BASE_URL")),
-		},
-		&cli.StringFlag{
-			Name:    "reranker_model",
-			Sources: cli.NewValueSourceChain(cli.EnvVar("RERANKER_MODEL")),
-		},
-		&cli.IntFlag{
-			Name:  "limit",
-			Value: 10,
-		},
+		flagDSN,
+		flagEmbeddingBaseURL,
+		flagEmbeddingModel,
+		flagRerankerBaseURL,
+		flagRerankerModel,
+		flagAssistantBaseURL,
+		flagAssistantModel,
+		&cli.IntFlag{Name: "limit", Value: 10},
 	},
 	Action: func(ctx context.Context, command *cli.Command) error {
-		query := command.StringArg("query")
-		if query == "" {
-			return errors.New("query is required")
+		query, err := getArgumentQuery(command)
+		if err != nil {
+			return err
 		}
 
-		baseURL := command.String("base_url")
-		model := command.String("model")
-		rerankerBaseURL := command.String("reranker_base_url")
-		rerankerModel := command.String("reranker_model")
 		dsn := command.String("dsn")
+		embeddingBaseURL := command.String("embedding-base-url")
+		embeddingModel := command.String("embedding-model")
+		rerankerBaseURL := command.String("reranker-base-url")
+		rerankerModel := command.String("reranker-model")
 		limit := command.Int("limit")
 
 		db, err := rag.OpenDB(dsn)
@@ -63,12 +46,12 @@ var askCmd = &cli.Command{
 			return err
 		}
 
-		client := openai.NewClient(option.WithBaseURL(baseURL))
+		client := openai.NewClient(option.WithBaseURL(embeddingBaseURL))
 		rerankerClient := rag.NewInfinityClient(rerankerBaseURL)
 		r := rag.RAG{
 			DB:              db,
 			EmbeddingClient: &client,
-			EmbeddingModel:  model,
+			EmbeddingModel:  embeddingModel,
 			RerankerClient:  rerankerClient,
 			RerankerModel:   rerankerModel,
 		}
@@ -94,6 +77,8 @@ var askCmd = &cli.Command{
 		if err != nil {
 			return err
 		}
+
+		fmt.Println("The answer is:")
 		fmt.Println(answer)
 		return nil
 	},

@@ -31,6 +31,10 @@ type RAG struct {
 }
 
 func OpenDB(dsn string) (*gorm.DB, error) {
+	if len(dsn) == 0 {
+		return nil, errors.New("dsn is required")
+	}
+
 	logger := gormzerolog.NewGormLogger()
 	logger.IgnoreRecordNotFoundError(true)
 	logger.LogMode(gormlogger.Error)

@@ -15,14 +15,8 @@ var cleanupCmd = &cli.Command{
 	Name:  "cleanup",
 	Usage: "Clean up invalid document chunks",
 	Flags: []cli.Flag{
-		&cli.StringFlag{
-			Name:    "dsn",
-			Sources: cli.NewValueSourceChain(cli.EnvVar("RAG_DSN")),
-		},
-		&cli.BoolFlag{
-			Name:    "delete",
-			Aliases: []string{"d"},
-		},
+		flagDSN,
+		&cli.BoolFlag{Name: "delete", Aliases: []string{"d"}},
 	},
 	Action: func(ctx context.Context, command *cli.Command) error {
 		dsn := command.String("dsn")

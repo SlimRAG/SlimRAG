@@ -16,34 +16,13 @@ var healthCmd = &cli.Command{
 	Name:  "health",
 	Usage: "Retrieve service health status",
 	Flags: []cli.Flag{
-		&cli.StringFlag{
-			Name:    "dsn",
-			Sources: cli.NewValueSourceChain(cli.EnvVar("RAG_DSN")),
-		},
-		&cli.StringFlag{
-			Name:    "embedding-base-url",
-			Sources: cli.NewValueSourceChain(cli.EnvVar("RAG_EMBEDDING_BASE_URL")),
-		},
-		&cli.StringFlag{
-			Name:    "embedding-model",
-			Sources: cli.NewValueSourceChain(cli.EnvVar("RAG_EMBEDDING_MODEL")),
-		},
-		&cli.StringFlag{
-			Name:    "reranker-base-url",
-			Sources: cli.NewValueSourceChain(cli.EnvVar("RAG_RERANKER_BASE_URL")),
-		},
-		&cli.StringFlag{
-			Name:    "reranker-model",
-			Sources: cli.NewValueSourceChain(cli.EnvVar("RAG_RERANKER_MODEL")),
-		},
-		&cli.StringFlag{
-			Name:    "assistant-base-url",
-			Sources: cli.NewValueSourceChain(cli.EnvVar("RAG_ASSISTANT_BASE_URL")),
-		},
-		&cli.StringFlag{
-			Name:    "assistant-model",
-			Sources: cli.NewValueSourceChain(cli.EnvVar("RAG_ASSISTANT_MODEL")),
-		},
+		flagDSN,
+		flagEmbeddingBaseURL,
+		flagEmbeddingModel,
+		flagRerankerBaseURL,
+		flagRerankerModel,
+		flagAssistantBaseURL,
+		flagAssistantModel,
 	},
 	Action: func(ctx context.Context, command *cli.Command) error {
 		dsn := command.String("dsn")

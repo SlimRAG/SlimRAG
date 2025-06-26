@@ -13,9 +13,10 @@ import (
 )
 
 var cmd = &cli.Command{
-	Name: "ragctl",
+	Name:  "ragctl",
+	Usage: "RAG for minimalists",
 	Commands: []*cli.Command{
-		generateScriptCmd,
+		generateCmd,
 		scanCmd,
 		computeCmd,
 		cleanupCmd,
