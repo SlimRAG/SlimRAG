@@ -17,7 +17,7 @@ var askCmd = &cli.Command{
 	Name:  "ask",
 	Usage: "Search documents and ask the LLM",
 	Arguments: []cli.Argument{
-		&cli.StringArg{Name: "query", Config: cli.StringConfig{TrimSpace: true}},
+		&cli.StringArg{Name: "query", Config: trimSpace},
 	},
 	Flags: []cli.Flag{
 		&cli.StringFlag{

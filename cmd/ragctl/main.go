@@ -15,13 +15,13 @@ import (
 var cmd = &cli.Command{
 	Name: "ragctl",
 	Commands: []*cli.Command{
-		serveCmd,
+		generateScriptCmd,
 		scanCmd,
 		computeCmd,
+		cleanupCmd,
+		serveCmd,
 		askCmd,
 		getChunkCmd,
-		generateScriptCmd,
-		cleanupCmd,
 	},
 }
 

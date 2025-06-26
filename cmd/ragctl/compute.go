@@ -16,15 +16,15 @@ var computeCmd = &cli.Command{
 	Flags: []cli.Flag{
 		&cli.StringFlag{
 			Name:    "dsn",
-			Sources: cli.ValueSourceChain{Chain: []cli.ValueSource{cli.EnvVar("RAG_DSN")}},
+			Sources: cli.NewValueSourceChain(cli.EnvVar("RAG_DSN")),
 		},
 		&cli.StringFlag{
 			Name:    "base_url",
-			Sources: cli.ValueSourceChain{Chain: []cli.ValueSource{cli.EnvVar("EMBEDDING_BASE_URL")}},
+			Sources: cli.NewValueSourceChain(cli.EnvVar("EMBEDDING_BASE_URL")),
 		},
 		&cli.StringFlag{
 			Name:    "model",
-			Sources: cli.ValueSourceChain{Chain: []cli.ValueSource{cli.EnvVar("EMBEDDING_MODEL")}},
+			Sources: cli.NewValueSourceChain(cli.EnvVar("EMBEDDING_MODEL")),
 		},
 		&cli.BoolFlag{
 			Name:  "force",

@@ -15,7 +15,7 @@ import (
 
 var serveCmd = &cli.Command{
 	Name:  "serve",
-	Usage: "start rag server",
+	Usage: "Start HTTP server",
 	Flags: []cli.Flag{
 		&cli.StringFlag{
 			Name:    "bind",
@@ -24,15 +24,15 @@ var serveCmd = &cli.Command{
 		},
 		&cli.StringFlag{
 			Name:    "dsn",
-			Sources: cli.ValueSourceChain{Chain: []cli.ValueSource{cli.EnvVar("RAG_DSN")}},
+			Sources: cli.NewValueSourceChain(cli.EnvVar("RAG_DSN")),
 		},
 		&cli.StringFlag{
 			Name:    "base_url",
-			Sources: cli.ValueSourceChain{Chain: []cli.ValueSource{cli.EnvVar("EMBEDDING_BASE_URL")}},
+			Sources: cli.NewValueSourceChain(cli.EnvVar("EMBEDDING_BASE_URL")),
 		},
 		&cli.StringFlag{
 			Name:    "model",
-			Sources: cli.ValueSourceChain{Chain: []cli.ValueSource{cli.EnvVar("EMBEDDING_MODEL")}},
+			Sources: cli.NewValueSourceChain(cli.EnvVar("EMBEDDING_MODEL")),
 		},
 	},
 	Action: func(ctx context.Context, command *cli.Command) error {

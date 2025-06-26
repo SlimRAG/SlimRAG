@@ -17,6 +17,7 @@ import (
 
 var generateScriptCmd = &cli.Command{
 	Name:    "generate-script",
+	Usage:   "Generate .md from PDFs",
 	Aliases: []string{"gen", "generate"},
 	Arguments: []cli.Argument{
 		&cli.StringArg{Name: "path", Config: trimSpace},

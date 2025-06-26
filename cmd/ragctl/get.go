@@ -11,14 +11,15 @@ import (
 )
 
 var getChunkCmd = &cli.Command{
-	Name: "get",
+	Name:  "get",
+	Usage: "Get document chunk by ID",
 	Arguments: []cli.Argument{
-		&cli.StringArg{Name: "id", Config: cli.StringConfig{TrimSpace: true}},
+		&cli.StringArg{Name: "id", Config: trimSpace},
 	},
 	Flags: []cli.Flag{
 		&cli.StringFlag{
 			Name:    "dsn",
-			Sources: cli.ValueSourceChain{Chain: []cli.ValueSource{cli.EnvVar("RAG_DSN")}},
+			Sources: cli.NewValueSourceChain(cli.EnvVar("RAG_DSN")),
 		},
 	},
 	Action: func(ctx context.Context, command *cli.Command) error {

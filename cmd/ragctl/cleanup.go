@@ -12,7 +12,8 @@ import (
 )
 
 var cleanupCmd = &cli.Command{
-	Name: "cleanup",
+	Name:  "cleanup",
+	Usage: "Clean up invalid document chunks",
 	Flags: []cli.Flag{
 		&cli.StringFlag{
 			Name:    "dsn",
