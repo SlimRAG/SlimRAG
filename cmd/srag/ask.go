@@ -1,9 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"os"
+	"strings"
 
+	"github.com/goccy/go-json"
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
@@ -62,30 +66,62 @@ var askCmd = &cli.Command{
 			AssistantModel:  assistantModel,
 		}
 
-		chunks, err := r.QueryDocumentChunks(ctx, query, limit)
-		if err != nil {
-			return err
+		if strings.HasSuffix(query, ".ndjson") {
+			f, err := os.Open(query)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = f.Close() }()
+
+			scanner := bufio.NewScanner(f)
+			for scanner.Scan() {
+				line := scanner.Text()
+				var item queryItem
+				err = json.Unmarshal([]byte(line), &item)
+				if err != nil {
+					return err
+				}
+				err = ask(ctx, &r, item.Query, limit, topN)
+				if err != nil {
+					return err
+				}
+			}
+
+			return nil
 		}
 
-		chunks, err = r.Rerank(query, chunks, topN)
-		if err != nil {
-			return err
-		}
-
-		tw := table.NewWriter()
-		tw.AppendHeader(table.Row{"Chunk ID", "Document"})
-		for _, chunk := range chunks {
-			tw.AppendRow(table.Row{chunk.ID, chunk.Document})
-		}
-		fmt.Println(tw.Render())
-
-		answer, err := r.Ask(ctx, query, chunks)
-		if err != nil {
-			return err
-		}
-
-		fmt.Println("The answer is:")
-		fmt.Println(answer)
-		return nil
+		return ask(ctx, &r, query, limit, topN)
 	},
+}
+
+type queryItem struct {
+	Query string `json:"txt"`
+}
+
+func ask(ctx context.Context, r *rag.RAG, query string, limit int, topN int) error {
+	chunks, err := r.QueryDocumentChunks(ctx, query, limit)
+	if err != nil {
+		return err
+	}
+
+	chunks, err = r.Rerank(query, chunks, topN)
+	if err != nil {
+		return err
+	}
+
+	tw := table.NewWriter()
+	tw.AppendHeader(table.Row{"Chunk ID", "Document"})
+	for _, chunk := range chunks {
+		tw.AppendRow(table.Row{chunk.ID, chunk.Document})
+	}
+	fmt.Println(tw.Render())
+
+	answer, err := r.Ask(ctx, query, chunks)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("The answer is:")
+	fmt.Println(answer)
+	return nil
 }
