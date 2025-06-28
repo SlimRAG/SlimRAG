@@ -12,6 +12,7 @@ import (
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/urfave/cli/v3"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/fanyang89/rag/v1"
 )
@@ -32,6 +33,7 @@ var askCmd = &cli.Command{
 		flagAssistantModel,
 		&cli.IntFlag{Name: "limit", Value: 40},
 		&cli.IntFlag{Name: "top-n", Value: 10},
+		&cli.IntFlag{Name: "jobs", Value: 4},
 	},
 	Action: func(ctx context.Context, command *cli.Command) error {
 		query, err := getArgumentQuery(command)
@@ -48,6 +50,7 @@ var askCmd = &cli.Command{
 		assistantModel := command.String("assistant-model")
 		limit := command.Int("limit")
 		topN := command.Int("top-n")
+		jobs := command.Int("jobs")
 
 		db, err := rag.OpenDB(dsn)
 		if err != nil {
@@ -73,21 +76,22 @@ var askCmd = &cli.Command{
 			}
 			defer func() { _ = f.Close() }()
 
+			g, ctx := errgroup.WithContext(ctx)
+			g.SetLimit(jobs)
+
 			scanner := bufio.NewScanner(f)
 			for scanner.Scan() {
 				line := scanner.Text()
-				var item queryItem
-				err = json.Unmarshal([]byte(line), &item)
-				if err != nil {
-					return err
-				}
-				err = ask(ctx, &r, item.Query, limit, topN)
-				if err != nil {
-					return err
-				}
+				g.Go(func() error {
+					var item queryItem
+					err = json.Unmarshal([]byte(line), &item)
+					if err != nil {
+						return err
+					}
+					return ask(ctx, &r, item.Query, limit, topN)
+				})
 			}
-
-			return nil
+			return g.Wait()
 		}
 
 		return ask(ctx, &r, query, limit, topN)
@@ -95,7 +99,7 @@ var askCmd = &cli.Command{
 }
 
 type queryItem struct {
-	Query string `json:"txt"`
+	Query string `json:"query"`
 }
 
 func ask(ctx context.Context, r *rag.RAG, query string, limit int, topN int) error {
