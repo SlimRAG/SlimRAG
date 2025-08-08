@@ -3,11 +3,16 @@ package rag
 import (
 	"context"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 
+	"github.com/cespare/xxhash"
 	"github.com/cockroachdb/errors"
 	"github.com/minio/minio-go/v7"
 	"github.com/openai/openai-go"
@@ -37,10 +42,11 @@ func (r *RAG) UpsertDocumentChunks(document *Document) error {
 	defer func() { _ = tx.Rollback() }()
 
 	stmt, err := tx.Prepare(`
-		INSERT INTO document_chunks (id, document_id, text, start_offset, end_offset, embedding)
-		VALUES (?, ?, ?, ?, ?, ?)
+		INSERT INTO document_chunks (id, document_id, text, start_offset, end_offset)
+		VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT (id) DO UPDATE SET
-			embedding = EXCLUDED.embedding;
+			text = EXCLUDED.text,
+			document_id = EXCLUDED.document_id;
 	`)
 	if err != nil {
 		return err
@@ -54,7 +60,6 @@ func (r *RAG) UpsertDocumentChunks(document *Document) error {
 			chunk.Text,
 			0, // start_offset is not used
 			0, // end_offset is not used
-			chunk.Embedding,
 		)
 		if err != nil {
 			return err
@@ -86,13 +91,14 @@ func (r *RAG) ComputeEmbeddings(ctx context.Context, onlyEmpty bool, workers int
 
 	for rows.Next() {
 		var chunk DocumentChunk
-		var embedding []float32
-		err = rows.Scan(&chunk.ID, &chunk.Text, &embedding)
+		var embeddingBytes interface{}
+		err = rows.Scan(&chunk.ID, &chunk.Text, &embeddingBytes)
 		if err != nil {
 			return err
 		}
 
-		if embedding != nil || len(chunk.Text) == 0 {
+		// Skip if embedding already exists or text is empty
+		if embeddingBytes != nil || len(chunk.Text) == 0 {
 			_ = bar.Add(1)
 			continue
 		}
@@ -288,4 +294,98 @@ func (r *RAG) Ask(ctx context.Context, p *AskParameter) (string, error) {
 		return c.Choices[0].Text, nil
 	}
 	return "", errors.New("no choices returned from completion")
+}
+
+// CalculateFileHash calculates xxh64 hash of a file
+func CalculateFileHash(filePath string) (string, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	h := xxhash.New()
+	_, err = io.Copy(h, file)
+	if err != nil {
+		return "", err
+	}
+
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// IsFileProcessed checks if a file has been processed and if its hash matches
+func (r *RAG) IsFileProcessed(filePath, currentHash string) (bool, error) {
+	var storedHash string
+	err := r.DB.QueryRow("SELECT file_hash FROM processed_files WHERE file_path = ?", filePath).Scan(&storedHash)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return false, nil // File not processed yet
+		}
+		return false, err
+	}
+	return storedHash == currentHash, nil
+}
+
+// UpdateFileHash updates or inserts the file hash record
+func (r *RAG) UpdateFileHash(filePath, fileHash string) error {
+	_, err := r.DB.Exec(`
+		INSERT INTO processed_files (file_path, file_hash, processed_at)
+		VALUES (?, ?, CURRENT_TIMESTAMP)
+		ON CONFLICT (file_path) DO UPDATE SET
+			file_hash = EXCLUDED.file_hash,
+			processed_at = EXCLUDED.processed_at
+	`, filePath, fileHash)
+	return err
+}
+
+// RemoveDocumentChunks removes all chunks for a specific document
+func (r *RAG) RemoveDocumentChunks(documentID string) error {
+	_, err := r.DB.Exec("DELETE FROM document_chunks WHERE document_id = ?", documentID)
+	return err
+}
+
+// GetAllProcessedFiles returns all file paths from the processed_files table
+func (r *RAG) GetAllProcessedFiles() ([]string, error) {
+	rows, err := r.DB.Query("SELECT file_path FROM processed_files")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var filePaths []string
+	for rows.Next() {
+		var filePath string
+		err := rows.Scan(&filePath)
+		if err != nil {
+			return nil, err
+		}
+		filePaths = append(filePaths, filePath)
+	}
+	return filePaths, nil
+}
+
+// RemoveFileRecord removes a file record and its associated document chunks
+func (r *RAG) RemoveFileRecord(filePath string) error {
+	tx, err := r.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Get document ID from file path (remove .md extension)
+	documentID := strings.TrimSuffix(filepath.Base(filePath), ".md")
+
+	// Remove document chunks
+	_, err = tx.Exec("DELETE FROM document_chunks WHERE document_id = ?", documentID)
+	if err != nil {
+		return err
+	}
+
+	// Remove file record
+	_, err = tx.Exec("DELETE FROM processed_files WHERE file_path = ?", filePath)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }

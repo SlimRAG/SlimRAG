@@ -26,6 +26,7 @@ var cmd = &cli.Command{
 		getChunkCmd,
 		healthCmd,
 		chunkCmd,
+		updateCmd,
 	},
 }
 

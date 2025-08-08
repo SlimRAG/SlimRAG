@@ -1,5 +1,6 @@
 .idea/
 *.db
+*.db.wal
 *.exe
 .env
 __pycache__

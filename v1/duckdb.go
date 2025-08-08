@@ -18,14 +18,14 @@ func OpenDuckDB(dsn string) (*sql.DB, error) {
 	}
 
 	db := sql.OpenDB(connector)
-	err = migrateDuckDB(db)
+	err = migrateDuckDB(db, dsn)
 	if err != nil {
 		return nil, err
 	}
 	return db, nil
 }
 
-func migrateDuckDB(db *sql.DB) error {
+func migrateDuckDB(db *sql.DB, dsn string) error {
 	_, err := db.Exec(`
 		INSTALL vss;
 		LOAD vss;
@@ -48,11 +48,26 @@ func migrateDuckDB(db *sql.DB) error {
 		return errors.Wrap(err, "Failed to create document_chunks table")
 	}
 
+	// Create table to track processed files and their hashes
 	_, err = db.Exec(`
-		CREATE INDEX IF NOT EXISTS hnsw_idx ON document_chunks USING HNSW (embedding);
+		CREATE TABLE IF NOT EXISTS processed_files (
+			file_path VARCHAR PRIMARY KEY,
+			file_hash VARCHAR NOT NULL,
+			processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		);
 	`)
 	if err != nil {
-		return errors.Wrap(err, "Failed to create HNSW index")
+		return errors.Wrap(err, "Failed to create processed_files table")
+	}
+
+	// Only create HNSW index for in-memory databases
+	if dsn == ":memory:" {
+		_, err = db.Exec(`
+			CREATE INDEX IF NOT EXISTS hnsw_idx ON document_chunks USING HNSW (embedding);
+		`)
+		if err != nil {
+			return errors.Wrap(err, "Failed to create HNSW index")
+		}
 	}
 
 	return nil
