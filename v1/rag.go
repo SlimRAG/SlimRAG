@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -203,24 +202,25 @@ func (r *RAG) Rerank(ctx context.Context, query string, chunks []DocumentChunk, 
 	}
 	prompt = strings.ReplaceAll(prompt, "{{.Documents}}", documents)
 
-	req := openai.ChatCompletionRequest{
-		Model: r.AssistantModel,
-		Messages: []openai.ChatCompletionMessage{
-			{
-				Role:    openai.ChatMessageRoleUser,
-				Content: prompt,
-			},
-		},
-		N:    1,
-		Stop: []string{"\n"},
-	}
-
-	rsp, err := r.AssistantClient.CreateChatCompletion(ctx, req)
+	c, err := r.AssistantClient.Completions.New(ctx, openai.CompletionNewParams{
+		Model:  openai.CompletionNewParamsModel(r.AssistantModel),
+		Prompt: openai.CompletionNewParamsPromptUnion{OfString: openai.String(prompt)},
+		Stop:   openai.CompletionNewParamsStopUnion{OfStringArray: []string{"\n"}},
+		N:      openai.Int(1),
+	})
 	if err != nil {
-		return nil, errors.Wrap(err, "CreateChatCompletion")
+		return nil, errors.Wrap(err, "CreateCompletion")
 	}
 
-	choice := rsp.Choices[0].Message.Content
+	if len(c.Choices) == 0 {
+		// return original chunks if no choice
+		if len(chunks) > topN {
+			return chunks[:topN], nil
+		}
+		return chunks, nil
+	}
+
+	choice := c.Choices[0].Text
 	log.Info().Str("choice", choice).Msg("Reranked")
 
 	// parse the response and pick the top N chunks

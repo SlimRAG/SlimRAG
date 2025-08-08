@@ -27,8 +27,6 @@ var askCmd = &cli.Command{
 		flagDSN,
 		flagEmbeddingBaseURL,
 		flagEmbeddingModel,
-		flagRerankerBaseURL,
-		flagRerankerModel,
 		flagAssistantBaseURL,
 		flagAssistantModel,
 		&cli.IntFlag{Name: "limit", Value: 40},
@@ -44,8 +42,6 @@ var askCmd = &cli.Command{
 		dsn := command.String("dsn")
 		embeddingBaseURL := command.String("embedding-base-url")
 		embeddingModel := command.String("embedding-model")
-		rerankerBaseURL := command.String("reranker-base-url")
-		rerankerModel := command.String("reranker-model")
 		assistantBaseURL := command.String("assistant-base-url")
 		assistantModel := command.String("assistant-model")
 		limit := command.Int("limit")
@@ -63,8 +59,6 @@ var askCmd = &cli.Command{
 			DB:              db,
 			EmbeddingClient: &embeddingClient,
 			EmbeddingModel:  embeddingModel,
-			RerankerClient:  rag.NewInfinityClient(rerankerBaseURL),
-			RerankerModel:   rerankerModel,
 			AssistantClient: &assistantClient,
 			AssistantModel:  assistantModel,
 		}
@@ -108,7 +102,7 @@ func ask(ctx context.Context, r *rag.RAG, query string, limit int, topN int) err
 		return err
 	}
 
-	chunks, err = r.Rerank(query, chunks, topN)
+	chunks, err = r.Rerank(ctx, query, chunks, topN)
 	if err != nil {
 		return err
 	}
@@ -120,7 +114,7 @@ func ask(ctx context.Context, r *rag.RAG, query string, limit int, topN int) err
 	}
 	fmt.Println(tw.Render())
 
-	answer, err := r.Ask(ctx, query, chunks)
+	answer, err := r.Ask(ctx, &rag.AskParameter{Query: query, Limit: limit})
 	if err != nil {
 		return err
 	}

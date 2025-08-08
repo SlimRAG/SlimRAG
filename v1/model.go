@@ -41,6 +41,11 @@ type Document struct {
 	Chunks      []*DocumentChunk `json:"chunks"`
 }
 
+type AskParameter struct {
+	Query string `json:"query"`
+	Limit int    `json:"limit"`
+}
+
 func (d *Document) Fix() {
 	d.Document = strings.TrimSuffix(d.FileName, ".md")
 	d.RawDocument = d.FileName

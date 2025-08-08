@@ -19,8 +19,6 @@ var healthCmd = &cli.Command{
 		flagDSN,
 		flagEmbeddingBaseURL,
 		flagEmbeddingModel,
-		flagRerankerBaseURL,
-		flagRerankerModel,
 		flagAssistantBaseURL,
 		flagAssistantModel,
 	},
@@ -61,25 +59,6 @@ var healthCmd = &cli.Command{
 			return errors.New("empty response")
 		}
 
-		rerankerBaseURL := command.String("reranker-base-url")
-		if rerankerBaseURL == "" {
-			return errors.New("reranker-base-url is required")
-		}
-		rerankerModel := command.String("reranker-model")
-		if rerankerModel == "" {
-			return errors.New("reranker-model is required")
-		}
-		rerankerClient := rag.NewInfinityClient(rerankerBaseURL)
-		_, err = rerankerClient.Rerank(&rag.RerankRequest{
-			Model:     rerankerModel,
-			Query:     "Where is Munich?",
-			Documents: []string{"Munich is in Germany.", "The sky is blue."},
-			TopN:      3,
-		})
-		if err != nil {
-			return err
-		}
-
 		assistantBaseURL := command.String("assistant-base-url")
 		if assistantBaseURL == "" {
 			return errors.New("assistant-base-url is required")
@@ -102,7 +81,7 @@ var healthCmd = &cli.Command{
 			return errors.New("empty response")
 		}
 
-		fmt.Println("OK, database/embedding/reranker/assistant are operational")
+		fmt.Println("OK, database/embedding/assistant are operational")
 		return nil
 	},
 }
