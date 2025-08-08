@@ -20,7 +20,7 @@ var cleanupCmd = &cli.Command{
 	},
 	Action: func(ctx context.Context, command *cli.Command) error {
 		dsn := command.String("dsn")
-		db, err := rag.OpenDB(dsn)
+		db, err := rag.OpenDuckDB(dsn)
 		if err != nil {
 			return err
 		}

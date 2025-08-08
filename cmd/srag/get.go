@@ -25,7 +25,7 @@ var getChunkCmd = &cli.Command{
 			return errors.New("id is required")
 		}
 		dsn := command.String("dsn")
-		db, err := rag.OpenDB(dsn)
+		db, err := rag.OpenDuckDB(dsn)
 		if err != nil {
 			return err
 		}

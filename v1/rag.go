@@ -8,19 +8,13 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/minio/minio-go/v7"
 	"github.com/openai/openai-go"
-	"github.com/pgvector/pgvector-go"
 	"github.com/rs/zerolog/log"
 	"github.com/schollz/progressbar/v3"
 	"github.com/sourcegraph/conc/pool"
-	gormzerolog "github.com/vitaliy-art/gorm-zerolog"
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
-	gormlogger "gorm.io/gorm/logger"
 )
 
 type RAG struct {
-	DB              *gorm.DB
+	DB              *sql.DB
 	OSS             *minio.Client
 	EmbeddingClient *openai.Client
 	EmbeddingModel  string
@@ -30,74 +24,52 @@ type RAG struct {
 	AssistantModel  string
 }
 
-func OpenDB(dsn string) (*gorm.DB, error) {
-	if len(dsn) == 0 {
-		return nil, errors.New("dsn is required")
-	}
-
-	logger := gormzerolog.NewGormLogger()
-	logger.IgnoreRecordNotFoundError(true)
-	logger.LogMode(gormlogger.Error)
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
-		Logger: logger,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	err = migrate(db)
-	if err != nil {
-		return nil, err
-	}
-	return db, nil
-}
-
-func migrate(db *gorm.DB) error {
-	err := db.Exec("CREATE EXTENSION IF NOT EXISTS vector").Error
-	if err != nil {
-		return errors.Wrap(err, "Failed to create vector extension")
-	}
-
-	err = db.AutoMigrate(&DocumentChunk{})
-	if err != nil {
-		return errors.Wrap(err, "Failed to migrate document chunks")
-	}
-	return nil
-}
-
 func (r *RAG) UpsertDocumentChunks(document *Document) error {
 	if len(document.Chunks) == 0 {
 		return nil
 	}
 
-	counts := make(map[string]int)
-	for _, chunk := range document.Chunks {
-		counts[chunk.ID]++
+	tx, err := r.DB.Begin()
+	if err != nil {
+		return err
 	}
+	defer func() { _ = tx.Rollback() }()
 
-	chunks := make([]*DocumentChunk, 0, len(document.Chunks))
-	for _, c := range document.Chunks {
-		count := counts[c.ID]
-		if count == 1 {
-			chunks = append(chunks, c)
-		} else {
-			counts[c.ID] = count - 1
+	stmt, err := tx.Prepare(`
+		INSERT INTO document_chunks (id, document_id, text, start_offset, end_offset, embedding)
+		VALUES (?, ?, ?, ?, ?, ?)
+		ON CONFLICT (id) DO UPDATE SET
+			embedding = EXCLUDED.embedding;
+	`)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = stmt.Close() }()
+
+	for _, chunk := range document.Chunks {
+		_, err = stmt.Exec(
+			chunk.ID,
+			chunk.Document,
+			chunk.Text,
+			0, // start_offset is not used
+			0, // end_offset is not used
+			chunk.Embedding,
+		)
+		if err != nil {
+			return err
 		}
 	}
 
-	return r.DB.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "id"}},
-		UpdateAll: true,
-	}).Create(&chunks).Error
+	return tx.Commit()
 }
 
 func (r *RAG) ComputeEmbeddings(ctx context.Context, onlyEmpty bool, workers int) error {
 	var err error
 	var rows *sql.Rows
 	if onlyEmpty {
-		rows, err = r.DB.Model(&DocumentChunk{}).Where("embedding IS NULL").Rows()
+		rows, err = r.DB.QueryContext(ctx, "SELECT id, text, embedding FROM document_chunks WHERE embedding IS NULL")
 	} else {
-		rows, err = r.DB.Model(&DocumentChunk{}).Rows()
+		rows, err = r.DB.QueryContext(ctx, "SELECT id, text, embedding FROM document_chunks")
 	}
 	if err != nil {
 		return err
@@ -113,12 +85,13 @@ func (r *RAG) ComputeEmbeddings(ctx context.Context, onlyEmpty bool, workers int
 
 	for rows.Next() {
 		var chunk DocumentChunk
-		err = r.DB.ScanRows(rows, &chunk)
+		var embedding []float32
+		err = rows.Scan(&chunk.ID, &chunk.Text, &embedding)
 		if err != nil {
 			return err
 		}
 
-		if chunk.Embedding != nil || len(chunk.Text) == 0 {
+		if embedding != nil || len(chunk.Text) == 0 {
 			_ = bar.Add(1)
 			continue
 		}
@@ -144,10 +117,12 @@ func (r *RAG) ComputeEmbeddings(ctx context.Context, onlyEmpty bool, workers int
 				return
 			}
 
-			hv := pgvector.NewHalfVector(toFloat32Slice(rsp.Data[0].Embedding))
-			chunk.Embedding = &hv
+			chunk.Embedding = toFloat32Slice(rsp.Data[0].Embedding)
 
-			r.DB.Save(&chunk)
+			_, err = r.DB.ExecContext(ctx, "UPDATE document_chunks SET embedding = ? WHERE id = ?", chunk.Embedding, chunk.ID)
+			if err != nil {
+				log.Error().Err(err).Stack().Str("chunk_id", chunk.ID).Msg("Update embedding")
+			}
 		})
 	}
 
@@ -177,64 +152,43 @@ func (r *RAG) QueryDocumentChunks(ctx context.Context, query string, limit int) 
 	}
 	queryEmbedding := toFloat32Slice(rsp.Data[0].Embedding)
 
-	var chunks []DocumentChunk
-	err = r.DB.Clauses(clause.OrderBy{
-		Expression: clause.Expr{
-			SQL:  "embedding <-> ?",
-			Vars: []interface{}{pgvector.NewVector(queryEmbedding)},
-		}},
-	).Limit(limit).Find(&chunks).Error
+	rows, err := r.DB.QueryContext(ctx, `
+		SELECT id, document_id, text, embedding
+		FROM document_chunks
+		ORDER BY array_distance(embedding, ?::FLOAT[384])
+		LIMIT ?;
+	`, queryEmbedding, limit)
 	if err != nil {
 		return nil, err
 	}
+	defer func() { _ = rows.Close() }()
+
+	var chunks []DocumentChunk
+	for rows.Next() {
+		var chunk DocumentChunk
+		var embedding []float32
+		err = rows.Scan(&chunk.ID, &chunk.Document, &chunk.Text, &embedding)
+		if err != nil {
+			return nil, err
+		}
+		chunk.Embedding = embedding
+		chunks = append(chunks, chunk)
+	}
+
 	return chunks, nil
 }
 
 func (r *RAG) GetDocumentChunk(id string) (*DocumentChunk, error) {
-	var c DocumentChunk
-	err := r.DB.Model(&DocumentChunk{}).Where("id = ?", id).First(&c).Error
+	row := r.DB.QueryRow("SELECT id, document_id, text, embedding FROM document_chunks WHERE id = ?", id)
+
+	var chunk DocumentChunk
+	var embedding []float32
+	err := row.Scan(&chunk.ID, &chunk.Document, &chunk.Text, &embedding)
 	if err != nil {
 		return nil, err
 	}
-	return &c, nil
-}
-
-func (r *RAG) FindInvalidChunks(ctx context.Context, cb func(chunk *DocumentChunk)) error {
-	bar := progressbar.Default(-1)
-	bar.Describe("Cleaning up chunks")
-	defer func() { _ = bar.Finish() }()
-
-	var err error
-	var rows *sql.Rows
-	rows, err = r.DB.
-		Model(&DocumentChunk{}).
-		Where("embedding IS NULL OR (text = '') IS NOT FALSE OR embedding <-> ? = 0", zeroVector).
-		Rows()
-	if err != nil {
-		return err
-	}
-	defer func() { _ = rows.Close() }()
-
-	for rows.Next() {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-
-		var chunk DocumentChunk
-		err = r.DB.ScanRows(rows, &chunk)
-		if err != nil {
-			return err
-		}
-		cb(&chunk)
-	}
-
-	return nil
-}
-
-func (r *RAG) DeleteChunk(id string) error {
-	return r.DB.Where("id = ?", id).Delete(&DocumentChunk{}).Error
+	chunk.Embedding = embedding
+	return &chunk, nil
 }
 
 func (r *RAG) Rerank(query string, chunks []DocumentChunk, topN int) ([]DocumentChunk, error) {
@@ -261,6 +215,31 @@ func (r *RAG) Rerank(query string, chunks []DocumentChunk, topN int) ([]Document
 		cs[i] = chunks[m[hashString(x.Document)]]
 	}
 	return cs, nil
+}
+
+func (r *RAG) FindInvalidChunks(ctx context.Context, f func(chunk *DocumentChunk)) error {
+	rows, err := r.DB.QueryContext(ctx, "SELECT id, document_id, text, embedding FROM document_chunks WHERE embedding IS NULL")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var chunk DocumentChunk
+		var embedding []float32
+		err = rows.Scan(&chunk.ID, &chunk.Document, &chunk.Text, &embedding)
+		if err != nil {
+			return err
+		}
+		chunk.Embedding = embedding
+		f(&chunk)
+	}
+	return nil
+}
+
+func (r *RAG) DeleteChunk(id string) error {
+	_, err := r.DB.Exec("DELETE FROM document_chunks WHERE id = ?", id)
+	return err
 }
 
 func (r *RAG) Ask(ctx context.Context, query string, chunks []DocumentChunk) (string, error) {

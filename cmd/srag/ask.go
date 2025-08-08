@@ -52,7 +52,7 @@ var askCmd = &cli.Command{
 		topN := command.Int("top-n")
 		jobs := command.Int("jobs")
 
-		db, err := rag.OpenDB(dsn)
+		db, err := rag.OpenDuckDB(dsn)
 		if err != nil {
 			return err
 		}

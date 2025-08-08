@@ -47,7 +47,7 @@ var scanCmd = &cli.Command{
 			return err
 		}
 
-		db, err := rag.OpenDB(dsn)
+		db, err := rag.OpenDuckDB(dsn)
 		if err != nil {
 			return err
 		}

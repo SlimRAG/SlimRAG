@@ -36,7 +36,7 @@ var serveCmd = &cli.Command{
 		embeddingModel := command.String("embedding-model")
 		bind := command.String("bind")
 
-		db, err := rag.OpenDB(dsn)
+		db, err := rag.OpenDuckDB(dsn)
 		if err != nil {
 			return err
 		}

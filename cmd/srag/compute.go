@@ -34,7 +34,7 @@ var computeCmd = &cli.Command{
 		force := command.Bool("force")
 		workers := command.Int("workers")
 
-		db, err := rag.OpenDB(dsn)
+		db, err := rag.OpenDuckDB(dsn)
 		if err != nil {
 			return err
 		}

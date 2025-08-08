@@ -6,20 +6,17 @@ import (
 
 	"github.com/cespare/xxhash"
 	"github.com/negrel/assert"
-	"github.com/pgvector/pgvector-go"
 )
 
-const dims = 2560
-
-var zeroVector = pgvector.NewHalfVector(make([]float32, dims))
+const dims = 384
 
 type DocumentChunk struct {
-	ID          string               `gorm:"primaryKey"`
-	Document    string               `gorm:"not null"`
-	RawDocument string               `gorm:"not null"`
-	Text        string               `gorm:"not null" json:"text,omitzero"`
-	Embedding   *pgvector.HalfVector `gorm:"type:halfvec(2560)" json:"embedding,omitzero"`
-	Index       int                  `gorm:"-:all" json:"index"`
+	ID          string    `gorm:"primaryKey"`
+	Document    string    `gorm:"not null"`
+	RawDocument string    `gorm:"not null"`
+	Text        string    `gorm:"not null" json:"text,omitzero"`
+	Embedding   []float32 `gorm:"type:float[]" json:"embedding,omitzero"`
+	Index       int       `gorm:"-:all" json:"index"`
 }
 
 func hashString(s string) string {

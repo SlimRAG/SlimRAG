@@ -29,15 +29,11 @@ var healthCmd = &cli.Command{
 		if dsn == "" {
 			return errors.New("dsn is required")
 		}
-		db, err := rag.OpenDB(dsn)
+		db, err := rag.OpenDuckDB(dsn)
 		if err != nil {
 			return err
 		}
-		rawDB, err := db.DB()
-		if err != nil {
-			return err
-		}
-		err = rawDB.Ping()
+		err = db.PingContext(ctx)
 		if err != nil {
 			return err
 		}
