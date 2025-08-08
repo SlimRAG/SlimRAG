@@ -13,6 +13,8 @@ import (
 	"github.com/negrel/assert"
 	"github.com/rs/zerolog/log"
 	"github.com/urfave/cli/v3"
+
+	rag "github.com/fanyang89/rag/v1"
 )
 
 var generateCmd = &cli.Command{
@@ -46,6 +48,15 @@ var generateCmd = &cli.Command{
 		&cli.StringFlag{
 			Name: "chonkie-recipe",
 		},
+		&cli.BoolFlag{
+			Name:  "use-go-chunker",
+			Value: false,
+			Usage: "Use Go native chunker instead of Chonkie",
+		},
+		&cli.StringFlag{
+			Name:  "chunker-config",
+			Usage: "Path to chunker configuration file",
+		},
 	},
 	Action: func(ctx context.Context, command *cli.Command) error {
 		path, err := getArgumentPath(command)
@@ -61,6 +72,8 @@ var generateCmd = &cli.Command{
 		outputPath := command.String("output")
 		enableMinerU := command.Bool("mineru")
 		enableChonkie := command.Bool("chonkie")
+		useGoChunker := command.Bool("use-go-chunker")
+		chunkerConfig := command.String("chunker-config")
 
 		var w io.Writer
 		if outputPath == "-" {
@@ -124,16 +137,27 @@ var generateCmd = &cli.Command{
 			}
 
 			_, err = os.Stat(markdownFilePath)
-			if err == nil && enableChonkie {
+			if err == nil && (enableChonkie || useGoChunker) {
 				outputPath := fmt.Sprintf("%s.chunks.json", markdownFilePath)
 				_, err = os.Stat(outputPath)
 				if err != nil {
 					if !errors.Is(err, fs.ErrNotExist) {
 						return err
 					}
-					_, err = fmt.Fprintf(w, "pueue add -- \"uv run%s%s chunking '%s'%s--output '%s'\"\n",
-						toolArg, ragCliPath, markdownFilePath, recipeArg, outputPath)
-					assert.NoError(err)
+					if useGoChunker {
+						// 使用Go原生分块器
+						err = rag.ChunkMarkdownFile(markdownFilePath, chunkerConfig, outputPath)
+						if err != nil {
+							log.Error().Err(err).Str("path", markdownFilePath).Msg("Failed to chunk with Go chunker")
+							return err
+						}
+						log.Info().Str("input", markdownFilePath).Str("output", outputPath).Msg("Chunked with Go chunker")
+					} else {
+						// 使用Chonkie
+						_, err = fmt.Fprintf(w, "pueue add -- \"uv run%s%s chunking '%s'%s--output '%s'\"\n",
+							toolArg, ragCliPath, markdownFilePath, recipeArg, outputPath)
+						assert.NoError(err)
+					}
 				}
 			} else {
 				log.Info().Str("path", path).Msg("Skipped chunking since the markdown doesn't exist")

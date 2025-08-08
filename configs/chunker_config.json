@@ -1,0 +1,10 @@
+{
+  "max_chunk_size": 1000,
+  "min_chunk_size": 100,
+  "overlap_size": 50,
+  "sentence_window": 3,
+  "strategy": "adaptive",
+  "language": "auto",
+  "preserve_sections": true,
+  "similarity_threshold": 0.7
+}

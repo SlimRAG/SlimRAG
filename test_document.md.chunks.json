@@ -1,0 +1,49 @@
+{
+  "file_name": "test_document.md",
+  "document": "test_document",
+  "raw_document": "test_document.md",
+  "chunks": [
+    {
+      "ID": "a8dc8c251885baef",
+      "Document": "test_document",
+      "RawDocument": "test_document.md",
+      "text": "# 测试文档 这是一个用于测试文档分块功能的示例例文文档。 ## 第一第一章一章：介绍 文档分块是自然自然语言语言处理中的一个重要步骤，它将长文文档分割割成更小的、语义相关的片段。 这样做有几个好处： 1.",
+      "index": 0
+    },
+    {
+      "ID": "9ba96c08d8d37ea0",
+      "Document": "test_document",
+      "RawDocument": "test_document.md",
+      "text": "1 分块策略 常见的分块策略包括： - **固定大小小分分块**：按照固定的字符数或词数进行分割 - **语义分块**：基于语义相似相似性进行分割 - **句子分块**：以句子为单位进行分割 - **自适适应应分分块**：根据文档结构动态调整整分分块大小 ## 第二第二章二章：实现细节 在go语言言中中实实现文档分块需要考虑以下几个方面： ### 2. 1 文本预处理处理 文本预处理处理包括： - 去除多余的空白白字字符 - 标准标准化换行换行符 - 处理特殊特殊字符字符 ### 2. 2 分词和句子分割 对于中文文文文档，我们使用go-ego/gse库进行分词。",
+      "index": 1
+    },
+    {
+      "ID": "944d753cc88e6d70",
+      "Document": "test_document",
+      "RawDocument": "test_document.md",
+      "text": "词向量相似相似性 2. tf-idf相似相似性 3. 基于预训练模型的嵌入相似相似性 ## 第三第三章三章：性能优化 为了提高高分分块性能，我们采用了以下优化策略： - 并发处理：使用goroutine并行并行处理处理多个文档 - 内存优化：避免不必不必要必要的字符字符串复制 - 缓存机制：缓存常用的分词结果 ### 3.",
+      "index": 2
+    },
+    {
+      "ID": "442d5e49b9898cc1",
+      "Document": "test_document",
+      "RawDocument": "test_document.md",
+      "text": "1 并发处理 ```go func processdocuments(docs []string) { var wg sync. waitgroup for _, doc := range docs { wg. add(1) go func(d string) { defer wg.",
+      "index": 3
+    },
+    {
+      "ID": "50cc845dc9599c4f",
+      "Document": "test_document",
+      "RawDocument": "test_document.md",
+      "text": "done() chunkdocument(d) }(doc) } wg. wait() } ``` ### 3. 2 内存管理 合理的内存管理可以显著提高高性高性能性能： - 使用用字字符字符串构建器避免频繁的字符字符串串连连接 - 及时释放不再使用的大对象 - 使用对象池重用常用对象 ## 结论 通过使用go语言言实实现的文档分块系统，我们可以高效地处处理大量大量文文档，为后续的检索和生成任务提供良好的基础。",
+      "index": 4
+    },
+    {
+      "ID": "a86d8a4b6ac925ff",
+      "Document": "test_document",
+      "RawDocument": "test_document.md",
+      "text": "该系系统具有以下特点： - 高性高性能性能：支持并发处理 - 灵活灵活性活性：支持多种分块策略 - 可扩展性扩展扩展性展性：易于添加新的分块算法 - 易用易用性：提供简单的api接口 未来我们还可以考虑添加更多多功能功能，如： - 支持更多语言 - 集成更先进的nlp模型 - 提供可视可视化界面 - 支持实时时分分块",
+      "index": 5
+    }
+  ]
+}
