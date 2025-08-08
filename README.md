@@ -99,7 +99,30 @@ Start a web server that provides an API for interacting with the RAG system.
 ./srag serve
 ```
 
-The server will be available at `http://localhost:8080` by default.
+The server will be available at `http://localhost:5000` by default.
+
+### `bot`
+
+Start chat bots for Telegram and Slack platforms. Users can interact with the RAG system by mentioning the bot in group chats or sending direct messages.
+
+```bash
+# Start both Telegram and Slack bots
+./srag bot --telegram-token="your_telegram_token" --slack-token="your_slack_token" --slack-app-token="your_slack_app_token"
+
+# Start only Telegram bot
+./srag bot --telegram-token="your_telegram_token"
+
+# Configure maximum concurrent workers (default: 3)
+./srag bot --max-workers=5 --telegram-token="your_telegram_token"
+```
+
+The bot command includes:
+- **Rate limiting**: Built-in request queue with configurable maximum concurrent workers
+- **Multi-platform support**: Works with both Telegram and Slack
+- **Mention detection**: Responds to @mentions in group chats and all messages in direct chats
+- **Error handling**: Graceful error handling with user-friendly messages
+
+For detailed bot setup instructions, see [docs/bot.md](docs/bot.md).
 
 ## Deployment
 

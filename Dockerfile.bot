@@ -1,0 +1,60 @@
+# Multi-stage build for SlimRAG Bot
+FROM golang:1.24-alpine AS builder
+
+# Install build dependencies
+RUN apk add --no-cache git gcc musl-dev
+
+# Set working directory
+WORKDIR /app
+
+# Copy go mod files
+COPY go.mod go.sum ./
+COPY go.work go.work.sum ./
+
+# Copy pzlog module
+COPY pzlog/ ./pzlog/
+
+# Download dependencies
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Build the application
+RUN CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo -o srag ./cmd/srag
+
+# Final stage
+FROM alpine:latest
+
+# Install runtime dependencies
+RUN apk --no-cache add ca-certificates tzdata
+
+# Create non-root user
+RUN addgroup -g 1001 -S slimrag && \
+    adduser -u 1001 -S slimrag -G slimrag
+
+# Set working directory
+WORKDIR /app
+
+# Copy binary from builder stage
+COPY --from=builder /app/srag .
+
+# Copy configuration files
+COPY --from=builder /app/configs/ ./configs/
+COPY --from=builder /app/v1/prompts/ ./v1/prompts/
+
+# Change ownership to non-root user
+RUN chown -R slimrag:slimrag /app
+
+# Switch to non-root user
+USER slimrag
+
+# Expose port (if needed for health checks)
+EXPOSE 8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD ./srag health || exit 1
+
+# Default command
+CMD ["./srag", "bot"]

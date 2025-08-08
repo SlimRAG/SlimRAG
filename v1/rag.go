@@ -4,11 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"encoding/hex"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -198,77 +196,18 @@ func (r *RAG) GetDocumentChunk(id string) (*DocumentChunk, error) {
 	return &chunk, nil
 }
 
+// Rerank simplifies the chunk selection by returning the top N chunks
+// This is a simplified version that doesn't use LLM for reranking
+// but simply filters the most relevant chunks based on the initial retrieval order
 func (r *RAG) Rerank(ctx context.Context, query string, chunks []DocumentChunk, topN int) ([]DocumentChunk, error) {
-	prompt := MustGetPrompt("reranker")
-	prompt = strings.ReplaceAll(prompt, "{{.Query}}", query)
-
-	var documents string
-	for i, chunk := range chunks {
-		documents += fmt.Sprintf("Document %d: %s\n", i+1, chunk.Text)
-	}
-	prompt = strings.ReplaceAll(prompt, "{{.Documents}}", documents)
-
-	c, err := r.AssistantClient.Completions.New(ctx, openai.CompletionNewParams{
-		Model:  openai.CompletionNewParamsModel(r.AssistantModel),
-		Prompt: openai.CompletionNewParamsPromptUnion{OfString: openai.String(prompt)},
-		Stop:   openai.CompletionNewParamsStopUnion{OfStringArray: []string{"\n"}},
-		N:      openai.Int(1),
-	})
-	if err != nil {
-		return nil, errors.Wrap(err, "CreateCompletion")
-	}
-
-	if len(c.Choices) == 0 {
-		// return original chunks if no choice
-		if len(chunks) > topN {
-			return chunks[:topN], nil
-		}
+	// Simply return the top N chunks from the initial retrieval
+	// The chunks are already ordered by relevance from the vector search
+	if len(chunks) <= topN {
 		return chunks, nil
 	}
-
-	choice := c.Choices[0].Text
-	log.Info().Str("choice", choice).Msg("Reranked")
-
-	// parse the response and pick the top N chunks
-	// The response is a list of document indices, separated by commas.
-	// e.g. "1, 3, 2"
-	parts := strings.Split(choice, ",")
-	var rerankedChunks []DocumentChunk
-	seen := make(map[int]struct{})
-	for _, part := range parts {
-		index, err := strconv.Atoi(strings.TrimSpace(part))
-		if err != nil {
-			log.Warn().Err(err).Str("part", part).Msg("Failed to parse rerank index")
-			continue
-		}
-
-		// index is 1-based
-		if index-1 < 0 || index-1 >= len(chunks) {
-			log.Warn().Int("index", index).Msg("Rerank index out of bounds")
-			continue
-		}
-
-		if _, ok := seen[index]; ok {
-			log.Warn().Int("index", index).Msg("Duplicate rerank index")
-			continue
-		}
-
-		rerankedChunks = append(rerankedChunks, chunks[index-1])
-		seen[index] = struct{}{} // mark as seen
-	}
-
-	// Add the remaining chunks that were not picked by the reranker
-	for i, chunk := range chunks {
-		if _, ok := seen[i+1]; !ok {
-			rerankedChunks = append(rerankedChunks, chunk)
-		}
-	}
-
-	if len(rerankedChunks) > topN {
-		return rerankedChunks[:topN], nil
-	}
-
-	return rerankedChunks, nil
+	
+	log.Info().Int("total_chunks", len(chunks)).Int("selected_chunks", topN).Msg("Filtering top chunks")
+	return chunks[:topN], nil
 }
 
 func (r *RAG) Ask(ctx context.Context, p *AskParameter) (string, error) {
