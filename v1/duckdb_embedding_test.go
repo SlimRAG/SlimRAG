@@ -4,93 +4,116 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"math/rand"
 	"testing"
 
-	"github.com/openai/openai-go"
-	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// TestDuckDBEmbeddingStorageAndRetrieval 测试 DuckDB 的 embedding 存储和召回能力
-// 使用本地 ollama 的 bge-m3 模型
+// generateMockEmbedding generates a mock 384-dimensional embedding vector
+func generateMockEmbedding(seed int) []float32 {
+	r := rand.New(rand.NewSource(int64(seed)))
+	embedding := make([]float32, 384)
+	for i := range embedding {
+		embedding[i] = r.Float32()*2 - 1 // Random values between -1 and 1
+	}
+	return embedding
+}
+
+// convertToFloat32Slice converts []interface{} to []float32 for DuckDB array handling
+func convertToFloat32Slice(input interface{}) ([]float32, error) {
+	switch v := input.(type) {
+	case []interface{}:
+		result := make([]float32, len(v))
+		for i, val := range v {
+			switch f := val.(type) {
+			case float64:
+				result[i] = float32(f)
+			case float32:
+				result[i] = f
+			default:
+				return nil, fmt.Errorf("unsupported type in array: %T", f)
+			}
+		}
+		return result, nil
+	case []float32:
+		return v, nil
+	case []float64:
+		result := make([]float32, len(v))
+		for i, f := range v {
+			result[i] = float32(f)
+		}
+		return result, nil
+	default:
+		return nil, fmt.Errorf("unsupported type: %T", v)
+	}
+}
+
+// TestDuckDBEmbeddingStorageAndRetrieval tests DuckDB embedding storage and retrieval capabilities
+// using mock embedding data to focus on DuckDB VSS functionality
 func TestDuckDBEmbeddingStorageAndRetrieval(t *testing.T) {
-	// 设置测试环境
+	// Setup test environment
 	ctx := context.Background()
-	
-	// 使用内存数据库进行测试
+
+	// Use in-memory database for testing
 	db, err := OpenDuckDB(":memory:")
 	require.NoError(t, err)
 	defer db.Close()
 
-	// 配置 ollama 客户端 (假设 ollama 运行在默认端口)
-	ollamaBaseURL := "http://localhost:11434/v1"
-	embeddingModel := "bge-m3"
-	
-	embeddingClient := openai.NewClient(option.WithBaseURL(ollamaBaseURL))
-	
-	rag := &RAG{
-		DB:              db,
-		EmbeddingClient: &embeddingClient,
-		EmbeddingModel:  embeddingModel,
-	}
-
-	// 测试数据
+	// Test data with mock embeddings (384-dimensional)
 	testDocuments := []struct {
-		id       string
-		document string
-		text     string
+		id        string
+		document  string
+		text      string
+		embedding []float32
 	}{
 		{
-			id:       "chunk1",
-			document: "test_doc_1",
-			text:     "SlimRAG is a minimalist Retrieval-Augmented Generation system built with Go.",
+			id:        "chunk1",
+			document:  "test_doc_1",
+			text:      "SlimRAG is a minimalist Retrieval-Augmented Generation system built with Go.",
+			embedding: generateMockEmbedding(1), // Mock embedding for SlimRAG
 		},
 		{
-			id:       "chunk2",
-			document: "test_doc_1",
-			text:     "The system provides a command-line interface for building and querying RAG systems.",
+			id:        "chunk2",
+			document:  "test_doc_1",
+			text:      "The system provides a command-line interface for building and querying RAG systems.",
+			embedding: generateMockEmbedding(2), // Mock embedding for CLI
 		},
 		{
-			id:       "chunk3",
-			document: "test_doc_2",
-			text:     "DuckDB is an in-process SQL OLAP database management system with vector search capabilities.",
+			id:        "chunk3",
+			document:  "test_doc_2",
+			text:      "DuckDB is an in-process SQL OLAP database management system with vector search capabilities.",
+			embedding: generateMockEmbedding(3), // Mock embedding for DuckDB
 		},
 		{
-			id:       "chunk4",
-			document: "test_doc_2",
-			text:     "Vector embeddings enable semantic search and similarity matching in databases.",
+			id:        "chunk4",
+			document:  "test_doc_2",
+			text:      "Vector embeddings enable semantic search and similarity matching in databases.",
+			embedding: generateMockEmbedding(4), // Mock embedding for vectors
 		},
 	}
 
-	// 1. 测试文档块插入
+	// 1. Test document chunk insertion with embeddings
 	t.Run("InsertDocumentChunks", func(t *testing.T) {
 		for _, testDoc := range testDocuments {
 			_, err := db.ExecContext(ctx, `
 				INSERT INTO document_chunks (id, document_id, text, start_offset, end_offset, embedding)
 				VALUES (?, ?, ?, ?, ?, ?)
-			`, testDoc.id, testDoc.document, testDoc.text, 0, 0, nil)
+			`, testDoc.id, testDoc.document, testDoc.text, 0, 0, testDoc.embedding)
 			require.NoError(t, err)
 		}
 
-		// 验证插入的数据
+		// Verify inserted data
 		var count int
 		err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM document_chunks").Scan(&count)
 		require.NoError(t, err)
 		assert.Equal(t, len(testDocuments), count)
 	})
 
-	// 2. 测试 embedding 计算和存储
-	t.Run("ComputeAndStoreEmbeddings", func(t *testing.T) {
-		// 注意：这个测试需要 ollama 服务运行并且有 bge-m3 模型
-		// 如果 ollama 不可用，测试会跳过
-		err := rag.ComputeEmbeddings(ctx, true, 1)
-		if err != nil {
-			t.Skipf("Skipping embedding computation test: %v (ensure ollama is running with bge-m3 model)", err)
-			return
-		}
-
-		// 验证所有文档块都有了 embedding
+	// 2. Test embedding storage verification
+	t.Run("VerifyEmbeddingStorage", func(t *testing.T) {
+		// Verify all document chunks have embeddings
 		rows, err := db.QueryContext(ctx, "SELECT id, embedding FROM document_chunks WHERE embedding IS NOT NULL")
 		require.NoError(t, err)
 		defer rows.Close()
@@ -98,78 +121,114 @@ func TestDuckDBEmbeddingStorageAndRetrieval(t *testing.T) {
 		embeddingCount := 0
 		for rows.Next() {
 			var id string
-			var embedding []float32
-			err := rows.Scan(&id, &embedding)
+			var embeddingRaw interface{}
+			err := rows.Scan(&id, &embeddingRaw)
+			require.NoError(t, err)
+
+			embedding, err := convertToFloat32Slice(embeddingRaw)
 			require.NoError(t, err)
 			assert.NotEmpty(t, embedding)
-			assert.Greater(t, len(embedding), 0) // 确保 embedding 有内容
+			assert.Equal(t, 384, len(embedding)) // Ensure embedding has expected dimension
 			embeddingCount++
 		}
 		assert.Equal(t, len(testDocuments), embeddingCount)
 	})
 
-	// 3. 测试向量相似性搜索
+	// 3. Test vector similarity search using DuckDB VSS
 	t.Run("VectorSimilaritySearch", func(t *testing.T) {
-		// 首先确保有 embeddings
+		// First ensure embeddings exist
 		var embeddingCount int
 		err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM document_chunks WHERE embedding IS NOT NULL").Scan(&embeddingCount)
 		require.NoError(t, err)
-		
+
 		if embeddingCount == 0 {
 			t.Skip("No embeddings available for similarity search test")
 			return
 		}
 
-		// 测试查询
-		queryText := "What is SlimRAG?"
-		chunks, err := rag.QueryDocumentChunks(ctx, queryText, 2)
+		// Test vector similarity search with mock query embedding
+		// Query embedding similar to SlimRAG embedding (chunk1)
+		queryEmbedding := generateMockEmbedding(1) // Same seed as chunk1 for similarity
+
+		// Use DuckDB's array_cosine_similarity function for vector search
+		// Convert queryEmbedding to the correct array format for DuckDB
+		rows, err := db.QueryContext(ctx, `
+			SELECT id, document_id, text, array_cosine_similarity(embedding, ?::FLOAT[384]) as similarity
+			FROM document_chunks 
+			WHERE embedding IS NOT NULL
+			ORDER BY similarity DESC
+			LIMIT 2
+		`, queryEmbedding)
+
 		if err != nil {
-			t.Skipf("Skipping similarity search test: %v", err)
+			t.Skipf("Skipping similarity search test: %v (VSS extension may not be available)", err)
 			return
 		}
+		defer rows.Close()
 
-		// 验证搜索结果
-		assert.NotEmpty(t, chunks)
-		assert.LessOrEqual(t, len(chunks), 2)
-		
-		// 第一个结果应该与 SlimRAG 相关
-		if len(chunks) > 0 {
-			firstChunk := chunks[0]
-			assert.Contains(t, firstChunk.Text, "SlimRAG")
+		// Verify search results
+		var results []struct {
+			id         string
+			document   string
+			text       string
+			similarity float64
+		}
+
+		for rows.Next() {
+			var result struct {
+				id         string
+				document   string
+				text       string
+				similarity float64
+			}
+			err := rows.Scan(&result.id, &result.document, &result.text, &result.similarity)
+			require.NoError(t, err)
+			results = append(results, result)
+		}
+
+		assert.NotEmpty(t, results)
+		assert.LessOrEqual(t, len(results), 2)
+
+		// First result should be chunk1 (exact match with query embedding)
+		if len(results) > 0 {
+			firstResult := results[0]
+			assert.Equal(t, "chunk1", firstResult.id)
+			assert.Contains(t, firstResult.text, "SlimRAG")
+			assert.InDelta(t, 1.0, firstResult.similarity, 0.001) // Near perfect similarity
 		}
 	})
 
-	// 4. 测试 HNSW 索引功能
+	// 4. Test HNSW index functionality
 	t.Run("HNSWIndexFunctionality", func(t *testing.T) {
-		// 验证 HNSW 索引是否创建成功
+		// Verify HNSW index creation success
 		rows, err := db.QueryContext(ctx, `
 			SELECT indexname 
 			FROM pg_indexes 
 			WHERE tablename = 'document_chunks' AND indexname = 'hnsw_idx'
 		`)
-		
-		// 如果是 DuckDB，使用不同的查询
+
+		// If DuckDB, use different query
 		if err != nil {
-			// DuckDB 的索引查询方式
+			// DuckDB index query method
 			rows, err = db.QueryContext(ctx, "PRAGMA table_info('document_chunks')")
 		}
-		
+
 		if err != nil {
 			t.Logf("Could not verify index creation: %v", err)
 			return
 		}
 		defer rows.Close()
-		
-		// 至少验证表结构正确
+
+		// At least verify table structure is correct
 		var tableExists bool
 		err = db.QueryRowContext(ctx, `
 			SELECT COUNT(*) > 0 
 			FROM information_schema.tables 
 			WHERE table_name = 'document_chunks'
 		`).Scan(&tableExists)
-		
+
 		if err != nil {
-			// DuckDB 的表存在性检查
+			// DuckDB table existence check
 			err = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM document_chunks LIMIT 0").Scan(&tableExists)
 			assert.NoError(t, err)
 		} else {
@@ -177,9 +236,9 @@ func TestDuckDBEmbeddingStorageAndRetrieval(t *testing.T) {
 		}
 	})
 
-	// 5. 测试数据检索功能
+	// 5. Test data retrieval functionality
 	t.Run("DocumentChunkRetrieval", func(t *testing.T) {
-		// 测试通过 ID 获取文档块
+		// Test retrieving document chunk by ID
 		var chunk DocumentChunk
 		err := db.QueryRowContext(ctx, "SELECT id, document_id, text FROM document_chunks WHERE id = ?", "chunk1").Scan(&chunk.ID, &chunk.Document, &chunk.Text)
 		require.NoError(t, err)
@@ -187,15 +246,15 @@ func TestDuckDBEmbeddingStorageAndRetrieval(t *testing.T) {
 		assert.Equal(t, "test_doc_1", chunk.Document)
 		assert.Contains(t, chunk.Text, "SlimRAG")
 
-		// 测试不存在的文档块
+		// Test non-existent document chunk
 		err = db.QueryRowContext(ctx, "SELECT id FROM document_chunks WHERE id = ?", "nonexistent").Scan(&chunk.ID)
 		assert.Error(t, err)
 		assert.Equal(t, sql.ErrNoRows, err)
 	})
 
-	// 6. 测试批量操作
+	// 6. Test batch operations
 	t.Run("BatchOperations", func(t *testing.T) {
-		// 直接使用 SQL 插入测试数据，避免 embedding 数组大小问题
+		// Use SQL directly to insert test data, avoiding embedding array size issues
 		testChunks := []struct {
 			id       string
 			document string
@@ -212,8 +271,8 @@ func TestDuckDBEmbeddingStorageAndRetrieval(t *testing.T) {
 				text:     "This is a batch test document chunk 2.",
 			},
 		}
-		
-		// 测试批量插入
+
+		// Test batch insertion
 		for _, chunk := range testChunks {
 			_, err := db.ExecContext(ctx, `
 				INSERT INTO document_chunks (id, document_id, text, start_offset, end_offset, embedding)
@@ -221,8 +280,8 @@ func TestDuckDBEmbeddingStorageAndRetrieval(t *testing.T) {
 			`, chunk.id, chunk.document, chunk.text, 0, 0, nil)
 			require.NoError(t, err)
 		}
-		
-		// 验证插入的数据
+
+		// Verify inserted data
 		for _, chunk := range testChunks {
 			var retrievedChunk DocumentChunk
 			err := db.QueryRowContext(ctx, "SELECT id, document_id, text FROM document_chunks WHERE id = ?", chunk.id).Scan(&retrievedChunk.ID, &retrievedChunk.Document, &retrievedChunk.Text)
@@ -233,49 +292,77 @@ func TestDuckDBEmbeddingStorageAndRetrieval(t *testing.T) {
 	})
 }
 
-// TestDuckDBEmbeddingPerformance 测试 embedding 操作的性能
+// TestDuckDBEmbeddingPerformance tests the performance of DuckDB operations with embeddings
 func TestDuckDBEmbeddingPerformance(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping performance test in short mode")
 	}
 
 	ctx := context.Background()
-	
-	// 使用内存数据库
+
+	// Use in-memory database
 	db, err := OpenDuckDB(":memory:")
 	require.NoError(t, err)
 	defer db.Close()
 
-	// 插入大量测试数据
+	// Insert large amount of test data with mock embeddings
 	numChunks := 100
 	for i := 0; i < numChunks; i++ {
+		// Generate mock embedding with some variation
+		mockEmbedding := generateMockEmbedding(i + 100) // Use different seed range for performance test
+
 		_, err := db.ExecContext(ctx, `
 			INSERT INTO document_chunks (id, document_id, text, start_offset, end_offset, embedding)
 			VALUES (?, ?, ?, ?, ?, ?)
-		`, 
+		`,
 			hashString(fmt.Sprintf("perf_chunk_%d", i)),
 			"perf_test_doc",
 			fmt.Sprintf("This is performance test chunk number %d with some sample text content.", i),
-			0, 0, nil)
+			0, 0, mockEmbedding)
 		require.NoError(t, err)
 	}
 
-	// 验证插入的数据量
+	// Verify the amount of inserted data
 	var count int
 	err = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM document_chunks WHERE document_id = 'perf_test_doc'").Scan(&count)
 	require.NoError(t, err)
 	assert.Equal(t, numChunks, count)
 
+	// Test vector search performance
+	queryEmbedding := generateMockEmbedding(999) // Use a specific seed for query
+	rows, err := db.QueryContext(ctx, `
+		SELECT id, array_cosine_similarity(embedding, ?::FLOAT[384]) as similarity
+		FROM document_chunks 
+		WHERE document_id = 'perf_test_doc' AND embedding IS NOT NULL
+		ORDER BY similarity DESC
+		LIMIT 10
+	`, queryEmbedding)
+
+	if err != nil {
+		t.Logf("Vector search not available: %v", err)
+	} else {
+		defer rows.Close()
+		searchResults := 0
+		for rows.Next() {
+			var id string
+			var similarity float64
+			err := rows.Scan(&id, &similarity)
+			require.NoError(t, err)
+			searchResults++
+		}
+		t.Logf("Vector search returned %d results", searchResults)
+	}
+
 	t.Logf("Successfully inserted %d document chunks for performance testing", numChunks)
 }
 
-// TestDuckDBVSSExtension 测试 DuckDB VSS 扩展的安装和功能
+// TestDuckDBVSSExtension tests DuckDB VSS extension installation and functionality
 func TestDuckDBVSSExtension(t *testing.T) {
 	db, err := OpenDuckDB(":memory:")
 	require.NoError(t, err)
 	defer db.Close()
 
-	// 测试 VSS 扩展是否正确加载
+	// Test if VSS extension is loaded correctly
 	rows, err := db.Query("SELECT extension_name FROM duckdb_extensions() WHERE extension_name = 'vss'")
 	if err != nil {
 		t.Logf("Could not query extensions: %v", err)
@@ -298,11 +385,11 @@ func TestDuckDBVSSExtension(t *testing.T) {
 		t.Log("VSS extension not found in loaded extensions")
 	}
 
-	// 测试表结构是否正确创建
+	// Test if table structure is created correctly
 	var tableExists bool
 	err = db.QueryRow("SELECT COUNT(*) > 0 FROM information_schema.tables WHERE table_name = 'document_chunks'").Scan(&tableExists)
 	if err != nil {
-		// 尝试 DuckDB 特定的查询
+		// Try DuckDB specific query
 		err = db.QueryRow("SELECT COUNT(*) FROM document_chunks LIMIT 0").Scan(&tableExists)
 		assert.NoError(t, err)
 	} else {

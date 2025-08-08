@@ -16,13 +16,13 @@ import (
 
 // ChunkingConfig 分块配置
 type ChunkingConfig struct {
-	MaxChunkSize    int     `json:"max_chunk_size"`    // 最大块大小（字符数）
-	MinChunkSize    int     `json:"min_chunk_size"`    // 最小块大小（字符数）
-	OverlapSize     int     `json:"overlap_size"`      // 重叠大小（字符数）
-	SentenceWindow  int     `json:"sentence_window"`   // 句子窗口大小
-	Strategy        string  `json:"strategy"`          // 分块策略: "fixed", "semantic", "sentence", "adaptive"
-	Language        string  `json:"language"`          // 语言: "zh", "en", "auto"
-	PreserveSections bool   `json:"preserve_sections"` // 是否保留章节结构
+	MaxChunkSize        int     `json:"max_chunk_size"`       // 最大块大小（字符数）
+	MinChunkSize        int     `json:"min_chunk_size"`       // 最小块大小（字符数）
+	OverlapSize         int     `json:"overlap_size"`         // 重叠大小（字符数）
+	SentenceWindow      int     `json:"sentence_window"`      // 句子窗口大小
+	Strategy            string  `json:"strategy"`             // 分块策略: "fixed", "semantic", "sentence", "adaptive"
+	Language            string  `json:"language"`             // 语言: "zh", "en", "auto"
+	PreserveSections    bool    `json:"preserve_sections"`    // 是否保留章节结构
 	SimilarityThreshold float64 `json:"similarity_threshold"` // 语义相似度阈值
 }
 
@@ -93,7 +93,7 @@ func NewDocumentChunker(config *ChunkingConfig) (*DocumentChunker, error) {
 	}
 
 	chunker := &DocumentChunker{
-		config: config,
+		config:    config,
 		segmenter: &gse.Segmenter{},
 	}
 
@@ -166,7 +166,7 @@ func (c *DocumentChunker) preprocessText(text string) string {
 	text = strings.ReplaceAll(text, "\r", "\n")
 	// 移除多余的换行符
 	text = regexp.MustCompile(`\n{3,}`).ReplaceAllString(text, "\n\n")
-	
+
 	return strings.TrimSpace(text)
 }
 
@@ -285,8 +285,8 @@ func (c *DocumentChunker) sentenceChunking(content string) []*DocumentChunk {
 		}
 		potentialChunk += sentence
 
-		if utf8.RuneCountInString(potentialChunk) > c.config.MaxChunkSize || 
-		   sentenceCount >= c.config.SentenceWindow {
+		if utf8.RuneCountInString(potentialChunk) > c.config.MaxChunkSize ||
+			sentenceCount >= c.config.SentenceWindow {
 			// 保存当前块
 			if currentChunk != "" && utf8.RuneCountInString(currentChunk) >= c.config.MinChunkSize {
 				chunk := &DocumentChunk{
@@ -319,7 +319,7 @@ func (c *DocumentChunker) sentenceChunking(content string) []*DocumentChunk {
 func (c *DocumentChunker) adaptiveChunking(content string) []*DocumentChunk {
 	// 根据文档长度选择策略
 	docLength := utf8.RuneCountInString(content)
-	
+
 	switch {
 	case docLength < 500:
 		// 很短的文档，直接作为一个块

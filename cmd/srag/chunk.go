@@ -52,9 +52,9 @@ var chunkCmd = &cli.Command{
 			Value:   100,
 		},
 		&cli.IntFlag{
-			Name:    "overlap",
-			Usage:   "Overlap size in characters",
-			Value:   50,
+			Name:  "overlap",
+			Usage: "Overlap size in characters",
+			Value: 50,
 		},
 		&cli.StringFlag{
 			Name:    "language",
