@@ -53,12 +53,12 @@ func (s *Server) searchHandler(c echo.Context) error {
 	}
 	p.WithDefaults(c.QueryParam("limit"))
 
-	chunks, err := s.r.QueryDocumentChunks(context.TODO(), p.Query, p.Limit)
+	chunks, err := s.r.QueryDocumentChunks(c.Request().Context(), p.Query, p.Limit)
 	if err != nil {
 		return err
 	}
 
-	chunks, err = s.r.Rerank(p.Query, chunks, p.Limit)
+	chunks, err = s.r.Rerank(c.Request().Context(), p.Query, chunks, p.Limit)
 	if err != nil {
 		return err
 	}

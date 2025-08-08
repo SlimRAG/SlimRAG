@@ -3,6 +3,10 @@ package rag
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"sort"
+	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/cockroachdb/errors"
@@ -18,8 +22,6 @@ type RAG struct {
 	OSS             *minio.Client
 	EmbeddingClient *openai.Client
 	EmbeddingModel  string
-	RerankerClient  *InfinityClient
-	RerankerModel   string
 	AssistantClient *openai.Client
 	AssistantModel  string
 }
@@ -191,59 +193,90 @@ func (r *RAG) GetDocumentChunk(id string) (*DocumentChunk, error) {
 	return &chunk, nil
 }
 
-func (r *RAG) Rerank(query string, chunks []DocumentChunk, topN int) ([]DocumentChunk, error) {
-	m := make(map[string]int)
-	docs := make([]string, len(chunks))
-	for i, c := range chunks {
-		docs[i] = c.Text
-		m[hashString(c.Text)] = i
+func (r *RAG) Rerank(ctx context.Context, query string, chunks []DocumentChunk, topN int) ([]DocumentChunk, error) {
+	prompt := MustGetPrompt("reranker")
+	prompt = strings.ReplaceAll(prompt, "{{.Query}}", query)
+
+	var documents string
+	for i, chunk := range chunks {
+		documents += fmt.Sprintf("Document %d: %s\n", i+1, chunk.Text)
+	}
+	prompt = strings.ReplaceAll(prompt, "{{.Documents}}", documents)
+
+	req := openai.ChatCompletionRequest{
+		Model: r.AssistantModel,
+		Messages: []openai.ChatCompletionMessage{
+			{
+				Role:    openai.ChatMessageRoleUser,
+				Content: prompt,
+			},
+		},
+		N:    1,
+		Stop: []string{"\n"},
 	}
 
-	rsp, err := r.RerankerClient.Rerank(&RerankRequest{
-		Model:           r.RerankerModel,
-		Query:           query,
-		Documents:       docs,
-		TopN:            topN,
-		ReturnDocuments: true, // TODO:	maybe we don't need this
-	})
+	rsp, err := r.AssistantClient.CreateChatCompletion(ctx, req)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "CreateChatCompletion")
 	}
 
-	cs := make([]DocumentChunk, len(rsp.Results))
-	for i, x := range rsp.Results {
-		cs[i] = chunks[m[hashString(x.Document)]]
-	}
-	return cs, nil
-}
+	choice := rsp.Choices[0].Message.Content
+	log.Info().Str("choice", choice).Msg("Reranked")
 
-func (r *RAG) FindInvalidChunks(ctx context.Context, f func(chunk *DocumentChunk)) error {
-	rows, err := r.DB.QueryContext(ctx, "SELECT id, document_id, text, embedding FROM document_chunks WHERE embedding IS NULL")
-	if err != nil {
-		return err
-	}
-	defer func() { _ = rows.Close() }()
-
-	for rows.Next() {
-		var chunk DocumentChunk
-		var embedding []float32
-		err = rows.Scan(&chunk.ID, &chunk.Document, &chunk.Text, &embedding)
+	// parse the response and pick the top N chunks
+	// The response is a list of document indices, separated by commas.
+	// e.g. "1, 3, 2"
+	parts := strings.Split(choice, ",")
+	var rerankedChunks []DocumentChunk
+	seen := make(map[int]struct{})
+	for _, part := range parts {
+		index, err := strconv.Atoi(strings.TrimSpace(part))
 		if err != nil {
-			return err
+			log.Warn().Err(err).Str("part", part).Msg("Failed to parse rerank index")
+			continue
 		}
-		chunk.Embedding = embedding
-		f(&chunk)
+
+		// index is 1-based
+		if index-1 < 0 || index-1 >= len(chunks) {
+			log.Warn().Int("index", index).Msg("Rerank index out of bounds")
+			continue
+		}
+
+		if _, ok := seen[index]; ok {
+			log.Warn().Int("index", index).Msg("Duplicate rerank index")
+			continue
+		}
+
+		rerankedChunks = append(rerankedChunks, chunks[index-1])
+		seen[index] = struct{}{} // mark as seen
 	}
-	return nil
+
+	// Add the remaining chunks that were not picked by the reranker
+	for i, chunk := range chunks {
+		if _, ok := seen[i+1]; !ok {
+			rerankedChunks = append(rerankedChunks, chunk)
+		}
+	}
+
+	if len(rerankedChunks) > topN {
+		return rerankedChunks[:topN], nil
+	}
+
+	return rerankedChunks, nil
 }
 
-func (r *RAG) DeleteChunk(id string) error {
-	_, err := r.DB.Exec("DELETE FROM document_chunks WHERE id = ?", id)
-	return err
-}
+func (r *RAG) Ask(ctx context.Context, p *AskParameter) (string, error) {
+	chunks, err := r.QueryDocumentChunks(ctx, p.Query, p.Limit)
+	if err != nil {
+		return "", err
+	}
 
-func (r *RAG) Ask(ctx context.Context, query string, chunks []DocumentChunk) (string, error) {
-	prompt := buildPrompt(query, chunks)
+	chunks, err = r.Rerank(ctx, p.Query, chunks, p.Limit)
+	if err != nil {
+		return "", err
+	}
+
+	prompt := buildPrompt(p.Query, chunks)
 	c, err := r.AssistantClient.Completions.New(ctx, openai.CompletionNewParams{
 		Model:  openai.CompletionNewParamsModel(r.AssistantModel),
 		Prompt: openai.CompletionNewParamsPromptUnion{OfString: openai.String(prompt)},
