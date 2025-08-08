@@ -6,6 +6,7 @@ require (
 	github.com/cespare/xxhash v1.1.0
 	github.com/cockroachdb/errors v1.12.0
 	github.com/fioepq9/pzlog v0.0.0-20230530135430-bdd413a9bdc9
+	github.com/go-ego/gse v0.80.3
 	github.com/gobwas/glob v0.2.3
 	github.com/goccy/go-json v0.10.5
 	github.com/jedib0t/go-pretty/v6 v6.6.7
@@ -41,7 +42,6 @@ require (
 	github.com/duckdb/duckdb-go-bindings/windows-amd64 v0.1.12 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/getsentry/sentry-go v0.34.0 // indirect
-	github.com/go-ego/gse v0.80.3 // indirect
 	github.com/go-ini/ini v1.67.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.3.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
