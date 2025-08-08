@@ -18,3 +18,13 @@ tasks:
       GOARCH: amd64
     cmds:
       - go build ./cmd/srag
+
+  fmt:
+    cmds:
+      - go fmt ./...
+      - goimports -w .
+      - go mod tidy
+
+  install-tools:
+    cmds:
+      - go install golang.org/x/tools/cmd/goimports@latest
