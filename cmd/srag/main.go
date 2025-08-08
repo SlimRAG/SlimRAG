@@ -18,7 +18,6 @@ var cmd = &cli.Command{
 	Name:  "SlimRAG",
 	Usage: "RAG for minimalists",
 	Commands: []*cli.Command{
-		generateCmd,
 		scanCmd,
 		computeCmd,
 		cleanupCmd,
