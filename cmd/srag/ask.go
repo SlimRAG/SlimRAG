@@ -5,10 +5,10 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/glamour"
-	"github.com/cockroachdb/errors"
 	"github.com/goccy/go-json"
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/openai/openai-go"
@@ -21,7 +21,7 @@ import (
 
 var askCmd = &cli.Command{
 	Name:  "ask",
-	Usage: "Search documents and ask the LLM",
+	Usage: "Search documents and ask the LLM (supports direct query or file input)",
 	Arguments: []cli.Argument{
 		&cli.StringArg{Name: "query", Config: trimSpace},
 	},
@@ -38,6 +38,16 @@ var askCmd = &cli.Command{
 			Name:    "vector-only",
 			Aliases: []string{"vc", "vec"},
 			Usage:   "Only return vector search results without LLM processing",
+		},
+		&cli.StringFlag{
+			Name:    "system-prompt",
+			Aliases: []string{"sp"},
+			Usage:   "Custom system prompt file path",
+		},
+		&cli.StringFlag{
+			Name:    "system-text",
+			Aliases: []string{"st"},
+			Usage:   "Custom system prompt text (overrides --system-prompt)",
 		},
 		&cli.IntFlag{Name: "jobs", Value: 4},
 	},
@@ -56,7 +66,21 @@ var askCmd = &cli.Command{
 		retrievalLimit := command.Int("retrieval-limit")
 		selectedLimit := command.Int("selected-limit")
 		vectorOnly := command.Bool("vector-only")
+		systemPromptFile := command.String("system-prompt")
+		systemPromptText := command.String("system-text")
 		jobs := command.Int("jobs")
+
+		// Handle system prompt
+		var systemPrompt string
+		if systemPromptText != "" {
+			systemPrompt = systemPromptText
+		} else if systemPromptFile != "" {
+			content, err := os.ReadFile(systemPromptFile)
+			if err != nil {
+				return fmt.Errorf("failed to read system prompt file: %w", err)
+			}
+			systemPrompt = string(content)
+		}
 
 		db, err := rag.OpenDuckDB(dsn)
 		if err != nil {
@@ -73,32 +97,12 @@ var askCmd = &cli.Command{
 			AssistantModel:  assistantModel,
 		}
 
-		if strings.HasSuffix(query, ".ndjson") {
-			f, err := os.Open(query)
-			if err != nil {
-				return err
-			}
-			defer func() { _ = f.Close() }()
-
-			g, ctx := errgroup.WithContext(ctx)
-			g.SetLimit(jobs)
-
-			scanner := bufio.NewScanner(f)
-			for scanner.Scan() {
-				line := scanner.Text()
-				g.Go(func() error {
-					var item queryItem
-					err = json.Unmarshal([]byte(line), &item)
-					if err != nil {
-						return err
-					}
-					return ask(ctx, &r, item.Query, retrievalLimit, selectedLimit, vectorOnly)
-				})
-			}
-			return g.Wait()
+		// Check if query is a file path
+		if _, err := os.Stat(query); err == nil {
+			return processQueryFile(ctx, &r, query, retrievalLimit, selectedLimit, vectorOnly, systemPrompt, jobs)
 		}
 
-		return ask(ctx, &r, query, retrievalLimit, selectedLimit, vectorOnly)
+		return ask(ctx, &r, query, retrievalLimit, selectedLimit, vectorOnly, systemPrompt)
 	},
 }
 
@@ -106,7 +110,7 @@ type queryItem struct {
 	Query string `json:"query"`
 }
 
-func ask(ctx context.Context, r *rag.RAG, query string, retrievalLimit int, selectedLimit int, vectorOnly bool) error {
+func ask(ctx context.Context, r *rag.RAG, query string, retrievalLimit int, selectedLimit int, vectorOnly bool, systemPrompt string) error {
 	// 第一阶段：向量检索并显示检索到的块
 	retrievedChunks, err := r.QueryDocumentChunks(ctx, query, retrievalLimit)
 	if err != nil {
@@ -143,29 +147,100 @@ func ask(ctx context.Context, r *rag.RAG, query string, retrievalLimit int, sele
 	// 第三阶段：基于选择的块生成答案
 	fmt.Println("\nThe answer is:")
 
-	prompt := rag.BuildPrompt(query, selectedChunks)
-	c, err := r.AssistantClient.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
-		Model: r.AssistantModel,
-		Messages: []openai.ChatCompletionMessageParamUnion{
-			openai.UserMessage(prompt),
-		},
-	})
+	askParam := &rag.AskParameter{
+		Query:          query,
+		RetrievalLimit: retrievalLimit,
+		SelectedLimit:  selectedLimit,
+		SystemPrompt:   systemPrompt,
+	}
+	
+	answer, err := r.Ask(ctx, askParam)
 	if err != nil {
 		return err
 	}
 
-	if len(c.Choices) > 0 {
-		answer := string(c.Choices[0].Message.Content)
-		// Use glamour to render markdown
-		rendered, err := glamour.Render(answer, "dark")
-		if err != nil {
-			fmt.Printf("Error rendering markdown: %v\n", err)
-			fmt.Println(answer)
-			return nil
-		}
-		fmt.Println(rendered)
+	// Use glamour to render markdown
+	rendered, err := glamour.Render(answer, "dark")
+	if err != nil {
+		fmt.Printf("Error rendering markdown: %v\n", err)
+		fmt.Println(answer)
 		return nil
 	}
+	fmt.Println(rendered)
+	return nil
+}
 
-	return errors.New("no choices returned from chat completion")
+// processQueryFile handles reading queries from different file formats
+func processQueryFile(ctx context.Context, r *rag.RAG, filePath string, retrievalLimit int, selectedLimit int, vectorOnly bool, systemPrompt string, jobs int) error {
+	ext := strings.ToLower(filepath.Ext(filePath))
+	
+	switch ext {
+	case ".ndjson", ".jsonl":
+		return processNdjsonFile(ctx, r, filePath, retrievalLimit, selectedLimit, vectorOnly, systemPrompt, jobs)
+	case ".txt":
+		return processTextFile(ctx, r, filePath, retrievalLimit, selectedLimit, vectorOnly, systemPrompt)
+	default:
+		return fmt.Errorf("unsupported file format: %s. Supported formats: .ndjson, .jsonl, .txt", ext)
+	}
+}
+
+// processNdjsonFile processes NDJSON files with query items
+func processNdjsonFile(ctx context.Context, r *rag.RAG, filePath string, retrievalLimit int, selectedLimit int, vectorOnly bool, systemPrompt string, jobs int) error {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = f.Close() }()
+
+	g, ctx := errgroup.WithContext(ctx)
+	g.SetLimit(jobs)
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
+		g.Go(func() error {
+			var item queryItem
+			err = json.Unmarshal([]byte(line), &item)
+			if err != nil {
+				return err
+			}
+			return ask(ctx, r, item.Query, retrievalLimit, selectedLimit, vectorOnly, systemPrompt)
+		})
+	}
+	return g.Wait()
+}
+
+// processTextFile processes plain text files with one query per line
+func processTextFile(ctx context.Context, r *rag.RAG, filePath string, retrievalLimit int, selectedLimit int, vectorOnly bool, systemPrompt string) error {
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return err
+	}
+
+	lines := strings.Split(string(content), "\n")
+	queryCount := 0
+	
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		
+		queryCount++
+		fmt.Printf("Processing query %d: %s\n", queryCount, line)
+		
+		err := ask(ctx, r, line, retrievalLimit, selectedLimit, vectorOnly, systemPrompt)
+		if err != nil {
+			fmt.Printf("Error processing query '%s': %v\n", line, err)
+			continue
+		}
+		
+		fmt.Println("---\n")
+	}
+	
+	if queryCount == 0 {
+		fmt.Println("No queries found in the file")
+	}
+	
+	return nil
 }

@@ -46,6 +46,7 @@ type AskParameter struct {
 	Query          string `json:"query"`
 	RetrievalLimit int    `json:"retrieval_limit"` // 向量检索的数量，如100
 	SelectedLimit  int    `json:"selected_limit"`  // LLM选择的数量，如10
+	SystemPrompt   string `json:"system_prompt"`   // 自定义系统提示
 }
 
 func (d *Document) Fix() {

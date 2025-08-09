@@ -323,7 +323,12 @@ func (r *RAG) Ask(ctx context.Context, p *AskParameter) (string, error) {
 	}
 
 	// 第三阶段：基于选择的文档块生成最终答案
-	prompt := BuildPrompt(p.Query, selectedChunks)
+	var prompt string
+	if p.SystemPrompt != "" {
+		prompt = BuildPromptWithSystem(p.Query, selectedChunks, p.SystemPrompt)
+	} else {
+		prompt = BuildPrompt(p.Query, selectedChunks)
+	}
 	c, err := r.AssistantClient.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
 		Model: r.AssistantModel,
 		Messages: []openai.ChatCompletionMessageParamUnion{
