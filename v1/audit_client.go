@@ -105,20 +105,32 @@ func sanitizeMessages(messages []openai.ChatCompletionMessageParamUnion) []map[s
 
 	for i, msg := range messages {
 		sanitizedMsg := map[string]interface{}{
-			"role": "unknown",
+			"role":    "chat message",
+			"content": "[Message content sanitized for privacy]",
 		}
 
-		// Use string representation for logging to avoid type complexity
+		// Get the string representation to analyze message structure
 		msgStr := fmt.Sprintf("%v", msg)
-		sanitizedMsg["content"] = fmt.Sprintf("[Message type: %T, Length: %d chars]", msg, len(msgStr))
-
-		// Try to extract role information
-		if strings.Contains(msgStr, "user") {
-			sanitizedMsg["role"] = "user"
-		} else if strings.Contains(msgStr, "assistant") {
-			sanitizedMsg["role"] = "assistant"
-		} else if strings.Contains(msgStr, "system") {
-			sanitizedMsg["role"] = "system"
+		
+		// Try to determine role based on field positions in the struct
+		// Based on the pattern: {<nil> <nil> content <nil> <nil> <nil> {{<nil>}}}
+		fields := strings.Fields(strings.ReplaceAll(strings.ReplaceAll(msgStr, "{", ""), "}", ""))
+		
+		// Count non-nil fields to infer content presence
+		nonNilCount := 0
+		for _, field := range fields {
+			if field != "<nil>" && !strings.Contains(field, "0x") {
+				nonNilCount++
+			}
+		}
+		
+		// Provide content size estimation
+		if nonNilCount > 1 {
+			sanitizedMsg["content"] = fmt.Sprintf("[Chat message: substantial content]")
+		} else if nonNilCount == 1 {
+			sanitizedMsg["content"] = fmt.Sprintf("[Chat message: minimal content]")
+		} else {
+			sanitizedMsg["content"] = fmt.Sprintf("[Chat message: empty or placeholder]")
 		}
 
 		sanitized[i] = sanitizedMsg
