@@ -145,13 +145,11 @@ func (c *DocumentChunker) ChunkDocument(content string, fileName string) (*Docum
 	}
 
 	doc := &Document{
-		FileName:    fileName,
-		Document:    strings.TrimSuffix(fileName, filepath.Ext(fileName)),
-		RawDocument: fileName,
-		Chunks:      chunks,
+		FileName:   fileName,
+		DocumentID: strings.TrimSuffix(fileName, filepath.Ext(fileName)),
+		Chunks:     chunks,
 	}
 
-	doc.Fix()
 	return doc, nil
 }
 
@@ -186,14 +184,18 @@ func (c *DocumentChunker) GetDocumentChunks(filePath string) (*Document, error) 
 		relPath = filePath
 	}
 
-	doc := &Document{
-		FileName:    filepath.Base(filePath),
-		FilePath:    relPath,
-		RawDocument: filepath.Base(filePath),
-		Chunks:      chunks,
+	documentID := CalculateStringHash(content)
+	for _, chunk := range chunks {
+		chunk.DocumentID = documentID
+		chunk.ID = CalculateStringHash(chunk.Text)
 	}
-	doc.Fix()
 
+	doc := &Document{
+		FileName:   filepath.Base(filePath),
+		FilePath:   relPath,
+		DocumentID: documentID,
+		Chunks:     chunks,
+	}
 	return doc, nil
 }
 

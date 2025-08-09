@@ -145,9 +145,9 @@ func ask(ctx context.Context, r *rag.RAG, query string, retrievalLimit int, sele
 
 	fmt.Printf("Retrieved %d chunks from vector search:\n", len(retrievedChunks))
 	tw := table.NewWriter()
-	tw.AppendHeader(table.Row{"Chunk ID", "Document", "File Path"})
+	tw.AppendHeader(table.Row{"Chunk ID", "Document"})
 	for _, chunk := range retrievedChunks {
-		tw.AppendRow(table.Row{chunk.ID, chunk.Document, chunk.FilePath})
+		tw.AppendRow(table.Row{chunk.ID, chunk.DocumentID})
 	}
 	fmt.Println(tw.Render())
 
@@ -164,9 +164,9 @@ func ask(ctx context.Context, r *rag.RAG, query string, retrievalLimit int, sele
 
 	fmt.Printf("\nLLM selected %d most relevant chunks:\n", len(selectedChunks))
 	tw2 := table.NewWriter()
-	tw2.AppendHeader(table.Row{"Chunk ID", "Document", "File Path"})
+	tw2.AppendHeader(table.Row{"Chunk ID", "Document"})
 	for _, chunk := range selectedChunks {
-		tw2.AppendRow(table.Row{chunk.ID, chunk.Document, chunk.FilePath})
+		tw2.AppendRow(table.Row{chunk.ID, chunk.DocumentID})
 	}
 	fmt.Println(tw2.Render())
 

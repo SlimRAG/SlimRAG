@@ -9,7 +9,7 @@ import (
 
 	"github.com/urfave/cli/v3"
 
-	rag "github.com/fanyang89/rag/v1"
+	"github.com/fanyang89/rag/v1"
 )
 
 var chunkCmd = &cli.Command{
@@ -110,7 +110,6 @@ var chunkCmd = &cli.Command{
 				return fmt.Errorf("failed to chunk document: %w", err)
 			}
 			doc.FilePath = inputPath
-			doc.Fix()
 
 			// Save results
 			data, err := json.MarshalIndent(doc, "", "  ")

@@ -158,7 +158,7 @@ func TestDuckDBEmbeddingStorageAndRetrieval(t *testing.T) {
 		// Convert queryEmbedding to the correct array format for DuckDB
 		rows, err := db.QueryContext(ctx, `
 			SELECT id, document_id, text, array_cosine_similarity(embedding, ?::FLOAT[1024]) as similarity
-			FROM document_chunks 
+			FROM document_chunks
 			WHERE embedding IS NOT NULL
 			ORDER BY similarity DESC
 			LIMIT 2
@@ -206,8 +206,8 @@ func TestDuckDBEmbeddingStorageAndRetrieval(t *testing.T) {
 	t.Run("HNSWIndexFunctionality", func(t *testing.T) {
 		// Verify HNSW index creation success
 		rows, err := db.QueryContext(ctx, `
-			SELECT indexname 
-			FROM pg_indexes 
+			SELECT indexname
+			FROM pg_indexes
 			WHERE tablename = 'document_chunks' AND indexname = 'hnsw_idx'
 		`)
 
@@ -226,8 +226,8 @@ func TestDuckDBEmbeddingStorageAndRetrieval(t *testing.T) {
 		// At least verify table structure is correct
 		var tableExists bool
 		err = db.QueryRowContext(ctx, `
-			SELECT COUNT(*) > 0 
-			FROM information_schema.tables 
+			SELECT COUNT(*) > 0
+			FROM information_schema.tables
 			WHERE table_name = 'document_chunks'
 		`).Scan(&tableExists)
 
@@ -244,10 +244,10 @@ func TestDuckDBEmbeddingStorageAndRetrieval(t *testing.T) {
 	t.Run("DocumentChunkRetrieval", func(t *testing.T) {
 		// Test retrieving document chunk by ID
 		var chunk DocumentChunk
-		err := db.QueryRowContext(ctx, "SELECT id, document_id, text FROM document_chunks WHERE id = ?", "chunk1").Scan(&chunk.ID, &chunk.Document, &chunk.Text)
+		err := db.QueryRowContext(ctx, "SELECT id, document_id, text FROM document_chunks WHERE id = ?", "chunk1").Scan(&chunk.ID, &chunk.DocumentID, &chunk.Text)
 		require.NoError(t, err)
 		assert.Equal(t, "chunk1", chunk.ID)
-		assert.Equal(t, "test_doc_1", chunk.Document)
+		assert.Equal(t, "test_doc_1", chunk.DocumentID)
 		assert.Contains(t, chunk.Text, "SlimRAG")
 
 		// Test non-existent document chunk
@@ -288,10 +288,10 @@ func TestDuckDBEmbeddingStorageAndRetrieval(t *testing.T) {
 		// Verify inserted data
 		for _, chunk := range testChunks {
 			var retrievedChunk DocumentChunk
-			err := db.QueryRowContext(ctx, "SELECT id, document_id, text FROM document_chunks WHERE id = ?", chunk.id).Scan(&retrievedChunk.ID, &retrievedChunk.Document, &retrievedChunk.Text)
+			err := db.QueryRowContext(ctx, "SELECT id, document_id, text FROM document_chunks WHERE id = ?", chunk.id).Scan(&retrievedChunk.ID, &retrievedChunk.DocumentID, &retrievedChunk.Text)
 			require.NoError(t, err)
 			assert.Equal(t, chunk.text, retrievedChunk.Text)
-			assert.Equal(t, "batch_test", retrievedChunk.Document)
+			assert.Equal(t, "batch_test", retrievedChunk.DocumentID)
 		}
 	})
 }
@@ -340,7 +340,7 @@ func TestDuckDBEmbeddingPerformance(t *testing.T) {
 	queryEmbedding := generateMockEmbedding(999) // Use a specific seed for query
 	rows, err := db.QueryContext(ctx, `
 		SELECT id, array_cosine_similarity(embedding, ?::FLOAT[1024]) as similarity
-		FROM document_chunks 
+		FROM document_chunks
 		WHERE document_id = 'perf_test_doc' AND embedding IS NOT NULL
 		ORDER BY similarity DESC
 		LIMIT 10

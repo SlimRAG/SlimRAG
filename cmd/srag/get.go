@@ -35,7 +35,7 @@ var getChunkCmd = &cli.Command{
 		if err != nil {
 			return err
 		}
-		fmt.Printf("id=%v document='%s' raw_document='%s'\n", c.ID, c.Document, c.RawDocument)
+		fmt.Printf("id=%v document='%s'\n", c.ID, c.DocumentID)
 		fmt.Println(c.Text)
 		return nil
 	},

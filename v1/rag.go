@@ -43,27 +43,18 @@ func (r *RAG) UpsertDocumentChunks(document *Document) error {
 	defer func() { _ = tx.Rollback() }()
 
 	stmt, err := tx.Prepare(`
-		INSERT INTO document_chunks (id, document_id, file_path, text, start_offset, end_offset)
-		VALUES (?, ?, ?, ?, ?, ?)
+		INSERT INTO document_chunks (id, document_id, text)
+		VALUES (?, ?, ?)
 		ON CONFLICT (id) DO UPDATE SET
 			text = EXCLUDED.text,
-			document_id = EXCLUDED.document_id,
-			file_path = EXCLUDED.file_path;
-	`)
+			document_id = EXCLUDED.document_id`)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = stmt.Close() }()
 
 	for _, chunk := range document.Chunks {
-		_, err = stmt.Exec(
-			chunk.ID,
-			chunk.Document,
-			chunk.FilePath,
-			chunk.Text,
-			0, // start_offset is not used
-			0, // end_offset is not used
-		)
+		_, err = stmt.Exec(chunk.ID, document.DocumentID, chunk.Text)
 		if err != nil {
 			return err
 		}
@@ -188,7 +179,7 @@ func (r *RAG) QueryDocumentChunks(ctx context.Context, query string, limit int) 
 	for rows.Next() {
 		var chunk DocumentChunk
 		var embeddingInterface interface{}
-		err = rows.Scan(&chunk.ID, &chunk.Document, &chunk.FilePath, &chunk.Text, &embeddingInterface)
+		err = rows.Scan(&chunk.ID, &chunk.DocumentID, &chunk.Text, &embeddingInterface)
 		if err != nil {
 			return nil, err
 		}
@@ -215,7 +206,7 @@ func (r *RAG) GetDocumentChunk(id string) (*DocumentChunk, error) {
 
 	var chunk DocumentChunk
 	var embeddingInterface interface{}
-	err := row.Scan(&chunk.ID, &chunk.Document, &chunk.FilePath, &chunk.Text, &embeddingInterface)
+	err := row.Scan(&chunk.ID, &chunk.DocumentID, &chunk.Text, &embeddingInterface)
 	if err != nil {
 		return nil, err
 	}
@@ -390,6 +381,13 @@ func CalculateFileHash(filePath string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
+// CalculateStringHash calculates xxh64 hash of a string
+func CalculateStringHash(content string) string {
+	h := xxhash.New()
+	_ = h.Sum([]byte(content))
+	return hex.EncodeToString(h.Sum(nil))
+}
+
 // GenerateDocumentID generates a unique document ID using xxh64 hash of file path + filename
 func GenerateDocumentID(filePath string) string {
 	h := xxhash.New()
@@ -428,12 +426,12 @@ func (r *RAG) IsFileProcessed(filePath, currentHash string) (bool, error) {
 
 // UpdateProcessedFileHash updates or inserts the file hash record
 func (r *RAG) UpdateProcessedFileHash(filePath, fileHash string) error {
-	_, err := r.DB.Exec(`
-		INSERT INTO processed_files (file_path, file_hash, processed_at)
-		VALUES (?, ?, CURRENT_TIMESTAMP)
+	_, err := r.DB.Exec(`INSERT INTO processed_files (file_path, file_name, file_hash, processed_at)
+		VALUES (?, ?, ?, CURRENT_TIMESTAMP)
 		ON CONFLICT (file_path) DO UPDATE SET
 			file_hash = EXCLUDED.file_hash,
-			processed_at = EXCLUDED.processed_at`, filePath, fileHash)
+			processed_at = EXCLUDED.processed_at`,
+		filePath, filepath.Base(filePath), fileHash)
 	return err
 }
 
