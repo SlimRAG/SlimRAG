@@ -117,12 +117,8 @@ func (c *DocumentChunker) ChunkDocument(content string, fileName string) (*Docum
 		return nil, fmt.Errorf("content is empty")
 	}
 
-	// 预处理文本
 	content = c.preprocessText(content)
-
-	// 根据策略选择分块方法
 	var chunks []*DocumentChunk
-	var err error
 
 	switch c.config.Strategy {
 	case "fixed":
@@ -137,11 +133,6 @@ func (c *DocumentChunker) ChunkDocument(content string, fileName string) (*Docum
 		chunks = c.adaptiveChunking(content)
 	}
 
-	if err != nil {
-		return nil, err
-	}
-
-	// 创建文档对象
 	doc := &Document{
 		FileName:    fileName,
 		Document:    strings.TrimSuffix(fileName, filepath.Ext(fileName)),
@@ -149,9 +140,7 @@ func (c *DocumentChunker) ChunkDocument(content string, fileName string) (*Docum
 		Chunks:      chunks,
 	}
 
-	// 修复文档块
 	doc.Fix()
-
 	return doc, nil
 }
 
@@ -367,8 +356,6 @@ func (c *DocumentChunker) hybridChunking(content string) []*DocumentChunk {
 
 	return chunks
 }
-
-// 辅助方法
 
 // isSentenceBoundary 判断是否为句子边界
 func (c *DocumentChunker) isSentenceBoundary(r rune) bool {

@@ -93,7 +93,7 @@ func TestIssueProcessor_isConsultationQuestion(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		issue   GitHubIssue
+		issue    GitHubIssue
 		expected bool
 	}{
 		{
@@ -361,22 +361,22 @@ func TestIssueProcessor_ProcessIssues_Integration(t *testing.T) {
 func TestIssueProcessor_generateAnswer_ConfidenceEvaluation(t *testing.T) {
 	// Test that generateAnswer includes confidence evaluation logic
 	// Note: This test focuses on the structure and error handling rather than actual LLM calls
-	
+
 	processor := &IssueProcessor{
 		RAG: nil, // RAG is nil to test error handling
 	}
-	
+
 	issue := GitHubIssue{
 		Title: "How to configure the system?",
 		Body:  "I need help with configuration.",
 	}
-	
+
 	ctx := context.Background()
-	
+
 	// This should return an error since RAG is nil
 	_, err := processor.generateAnswer(ctx, issue)
 	assert.Error(t, err)
-	
+
 	// Test that the method signature is correct and can be called
 	// The actual confidence evaluation would require a real RAG instance
 	// which is beyond the scope of unit testing

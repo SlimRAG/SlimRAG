@@ -1,4 +1,6 @@
 .idea/
+*.ddb
+*.ddb.wal
 *.db
 *.db.wal
 *.exe

@@ -20,12 +20,13 @@ import (
 )
 
 type RAG struct {
-	DB              *sql.DB
-	OSS             *minio.Client
-	EmbeddingClient *openai.Client
-	EmbeddingModel  string
-	AssistantClient *openai.Client
-	AssistantModel  string
+	DB                  *sql.DB
+	OSS                 *minio.Client
+	EmbeddingClient     *openai.Client
+	EmbeddingModel      string
+	EmbeddingDimensions int64
+	AssistantClient     *openai.Client
+	AssistantModel      string
 }
 
 func (r *RAG) UpsertDocumentChunks(document *Document) error {
@@ -114,7 +115,7 @@ func (r *RAG) ComputeEmbeddings(ctx context.Context, onlyEmpty bool, workers int
 				Input: openai.EmbeddingNewParamsInputUnion{
 					OfString: openai.String(chunk.Text),
 				},
-				Dimensions:     openai.Int(dims),
+				Dimensions:     openai.Int(r.EmbeddingDimensions),
 				EncodingFormat: openai.EmbeddingNewParamsEncodingFormatFloat,
 			})
 			if err != nil {
@@ -150,18 +151,15 @@ func (r *RAG) QueryDocumentChunks(ctx context.Context, query string, limit int) 
 		Input: openai.EmbeddingNewParamsInputUnion{
 			OfString: openai.String(query),
 		},
-		Dimensions: openai.Int(dims),
+		Dimensions: openai.Int(r.EmbeddingDimensions),
 	})
 	if err != nil {
 		return nil, err
 	}
 	queryEmbedding := toFloat32Slice(rsp.Data[0].Embedding)
 
-	rows, err := r.DB.QueryContext(ctx, `
-		SELECT id, document_id, text, embedding
-		FROM document_chunks
-		ORDER BY array_distance(embedding, ?::FLOAT[384])
-		LIMIT ?;
+	rows, err := r.DB.QueryContext(ctx, `SELECT id, document_id, text, embedding FROM document_chunks
+		ORDER BY array_distance(embedding, ?::FLOAT[1024]) LIMIT ?;
 	`, queryEmbedding, limit)
 	if err != nil {
 		return nil, err
@@ -205,7 +203,7 @@ func (r *RAG) Rerank(ctx context.Context, query string, chunks []DocumentChunk, 
 	if len(chunks) <= topN {
 		return chunks, nil
 	}
-	
+
 	log.Info().Int("total_chunks", len(chunks)).Int("selected_chunks", topN).Msg("Filtering top chunks")
 	return chunks[:topN], nil
 }
@@ -267,13 +265,11 @@ func (r *RAG) IsFileProcessed(filePath, currentHash string) (bool, error) {
 
 // UpdateFileHash updates or inserts the file hash record
 func (r *RAG) UpdateFileHash(filePath, fileHash string) error {
-	_, err := r.DB.Exec(`
-		INSERT INTO processed_files (file_path, file_hash, processed_at)
+	_, err := r.DB.Exec(`INSERT INTO processed_files (file_path, file_hash, processed_at)
 		VALUES (?, ?, CURRENT_TIMESTAMP)
 		ON CONFLICT (file_path) DO UPDATE SET
 			file_hash = EXCLUDED.file_hash,
-			processed_at = EXCLUDED.processed_at
-	`, filePath, fileHash)
+			processed_at = EXCLUDED.processed_at`, filePath, fileHash)
 	return err
 }
 

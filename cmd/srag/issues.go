@@ -34,8 +34,8 @@ var issuesCmd = &cli.Command{
 			Required: true,
 		},
 		&cli.StringFlag{
-			Name:  "token",
-			Usage: "GitHub access token (optional, uses GITHUB_TOKEN env var if not provided)",
+			Name:    "token",
+			Usage:   "GitHub access token (optional, uses GITHUB_TOKEN env var if not provided)",
 			Sources: cli.NewValueSourceChain(cli.EnvVar("GITHUB_TOKEN")),
 		},
 		&cli.StringFlag{
@@ -224,7 +224,7 @@ func (p *IssueProcessor) fetchIssues(ctx context.Context, limit int) ([]GitHubIs
 // isConsultationQuestion determines if an issue is a consultation question using LLM
 func (p *IssueProcessor) isConsultationQuestion(issue GitHubIssue) bool {
 	ctx := context.Background()
-	
+
 	// Create a prompt for LLM to analyze the issue
 	prompt := fmt.Sprintf(`You are an expert at analyzing GitHub issues. Your task is to determine if the given issue is a consultation question that seeks help, advice, or information.
 
@@ -260,7 +260,7 @@ Respond with only "YES" if this is a consultation question, or "NO" if it is not
 			OfString: openai.String(prompt),
 		},
 		MaxTokens: openai.Int(10), // We only need a short YES/NO response
-		N: openai.Int(1),
+		N:         openai.Int(1),
 	})
 
 	if err != nil {
@@ -398,8 +398,8 @@ Evaluate the answer based on:
 Respond with only "HIGH" if the answer is confident and likely accurate, or "LOW" if the answer shows uncertainty, is vague, or may not be reliable.`, query, answer)
 
 	confidenceResp, err := p.RAG.AssistantClient.Completions.New(ctx, openai.CompletionNewParams{
-		Model: openai.CompletionNewParamsModel(p.RAG.AssistantModel),
-		Prompt: openai.CompletionNewParamsPromptUnion{OfString: openai.String(confidencePrompt)},
+		Model:     openai.CompletionNewParamsModel(p.RAG.AssistantModel),
+		Prompt:    openai.CompletionNewParamsPromptUnion{OfString: openai.String(confidencePrompt)},
 		MaxTokens: openai.Int(10),
 	})
 	if err != nil {

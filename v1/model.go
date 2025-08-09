@@ -8,8 +8,6 @@ import (
 	"github.com/negrel/assert"
 )
 
-const dims = 384
-
 type DocumentChunk struct {
 	ID          string    `gorm:"primaryKey"`
 	Document    string    `gorm:"not null"`

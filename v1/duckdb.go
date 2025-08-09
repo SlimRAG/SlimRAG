@@ -26,14 +26,13 @@ func OpenDuckDB(dsn string) (*sql.DB, error) {
 }
 
 func migrateDuckDB(db *sql.DB, dsn string) error {
-	_, err := db.Exec(`
-		INSTALL vss;
-		LOAD vss;
-	`)
+	// https://duckdb.org/docs/stable/core_extensions/vss.html#limitations
+	_, err := db.Exec(`INSTALL vss; LOAD vss; SET hnsw_enable_experimental_persistence = true;`)
 	if err != nil {
 		return errors.Wrap(err, "Failed to install or load vss extension")
 	}
 
+	// TODO: set dims from env
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS document_chunks (
 			id VARCHAR PRIMARY KEY,
@@ -41,7 +40,7 @@ func migrateDuckDB(db *sql.DB, dsn string) error {
 			text VARCHAR,
 			start_offset INTEGER,
 			end_offset INTEGER,
-			embedding FLOAT[384]
+			embedding FLOAT[1024]
 		);
 	`)
 	if err != nil {

@@ -22,14 +22,9 @@ var flagEmbeddingModel = &cli.StringFlag{
 	Sources: cli.NewValueSourceChain(cli.EnvVar("RAG_EMBEDDING_MODEL")),
 }
 
-var flagRerankerBaseURL = &cli.StringFlag{
-	Name:    "reranker-base-url",
-	Sources: cli.NewValueSourceChain(cli.EnvVar("RAG_RERANKER_BASE_URL")),
-}
-
-var flagRerankerModel = &cli.StringFlag{
-	Name:    "reranker-model",
-	Sources: cli.NewValueSourceChain(cli.EnvVar("RAG_RERANKER_MODEL")),
+var flagEmbeddingDimension = &cli.StringFlag{
+	Name:    "embedding-dimension",
+	Sources: cli.NewValueSourceChain(cli.EnvVar("RAG_EMBEDDING_DIMENSION")),
 }
 
 var flagAssistantBaseURL = &cli.StringFlag{

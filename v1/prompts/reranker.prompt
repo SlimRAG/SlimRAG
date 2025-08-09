@@ -1,8 +1,0 @@
-Given the query and a list of documents, your task is to re-rank the documents based on their relevance to the query. Provide the re-ranked document indices as a comma-separated list.
-
-Query: {{.Query}}
-
-Documents:
-{{.Documents}}
-
-Re-ranked indices:

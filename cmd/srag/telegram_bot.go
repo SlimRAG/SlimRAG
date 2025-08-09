@@ -21,17 +21,17 @@ type TelegramBot struct {
 
 // TelegramUpdate represents a Telegram update
 type TelegramUpdate struct {
-	UpdateID int `json:"update_id"`
+	UpdateID int              `json:"update_id"`
 	Message  *TelegramMessage `json:"message"`
 }
 
 // TelegramMessage represents a Telegram message
 type TelegramMessage struct {
-	MessageID int `json:"message_id"`
+	MessageID int           `json:"message_id"`
 	From      *TelegramUser `json:"from"`
 	Chat      *TelegramChat `json:"chat"`
-	Date      int64 `json:"date"`
-	Text      string `json:"text"`
+	Date      int64         `json:"date"`
+	Text      string        `json:"text"`
 }
 
 // TelegramUser represents a Telegram user
@@ -45,8 +45,8 @@ type TelegramUser struct {
 
 // TelegramChat represents a Telegram chat
 type TelegramChat struct {
-	ID   int64  `json:"id"`
-	Type string `json:"type"`
+	ID    int64  `json:"id"`
+	Type  string `json:"type"`
 	Title string `json:"title,omitempty"`
 }
 
@@ -79,12 +79,12 @@ func (tb *TelegramBot) Start(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to get bot info: %w", err)
 	}
-	
+
 	log.Info().Str("bot_name", tb.botName).Msg("Telegram bot started")
-	
+
 	// Start polling for updates
 	go tb.pollUpdates()
-	
+
 	// Wait for context cancellation
 	<-ctx.Done()
 	return nil
@@ -101,7 +101,7 @@ func (tb *TelegramBot) SendMessage(userID, message string) error {
 	if err != nil {
 		return fmt.Errorf("invalid chat ID: %w", err)
 	}
-	
+
 	return tb.sendMessage(chatID, message)
 }
 
@@ -119,7 +119,7 @@ func (tb *TelegramBot) getBotInfo() error {
 
 func (tb *TelegramBot) pollUpdates() {
 	offset := 0
-	
+
 	for {
 		select {
 		case <-tb.ctx.Done():
@@ -128,16 +128,16 @@ func (tb *TelegramBot) pollUpdates() {
 			// This is a simplified implementation
 			// In a real implementation, you would make HTTP requests to Telegram API
 			// to get updates using long polling
-			
+
 			// For demonstration purposes, we'll just sleep
 			time.Sleep(1 * time.Second)
-			
+
 			// In a real implementation, you would:
 			// 1. Make GET request to https://api.telegram.org/bot{token}/getUpdates
 			// 2. Parse the response
 			// 3. Process each update
 			// 4. Update the offset
-			
+
 			offset++ // Placeholder to avoid unused variable warning
 		}
 	}
@@ -147,9 +147,9 @@ func (tb *TelegramBot) processUpdate(update TelegramUpdate) {
 	if update.Message == nil || update.Message.Text == "" {
 		return
 	}
-	
+
 	message := update.Message
-	
+
 	// Check if the message mentions the bot
 	query, isMention := extractMention(message.Text, tb.botName)
 	if !isMention {
@@ -160,22 +160,22 @@ func (tb *TelegramBot) processUpdate(update TelegramUpdate) {
 		// In private chats, respond to all messages
 		query = message.Text
 	}
-	
+
 	if strings.TrimSpace(query) == "" {
 		return
 	}
-	
+
 	// Generate unique request ID
 	requestID := fmt.Sprintf("tg_%d_%d", message.Chat.ID, message.MessageID)
 	userID := strconv.FormatInt(message.Chat.ID, 10)
-	
+
 	// Enqueue the request
 	tb.botManager.EnqueueRequest(requestID, query, userID, "telegram", func(response string, err error) {
 		if err != nil {
 			log.Error().Err(err).Str("request_id", requestID).Msg("Error processing request")
 			response = "Sorry, I encountered an error while processing your request."
 		}
-		
+
 		// Send response back to user
 		if sendErr := tb.sendMessage(message.Chat.ID, response); sendErr != nil {
 			log.Error().Err(sendErr).Str("request_id", requestID).Msg("Error sending response")
@@ -187,7 +187,7 @@ func (tb *TelegramBot) processUpdate(update TelegramUpdate) {
 			log.Error().Err(sendErr).Str("request_id", requestID).Msg("Error sending queue notification")
 		}
 	})
-	
+
 	log.Info().Str("request_id", requestID).Str("query", query).Msg("Telegram request queued")
 }
 
@@ -196,7 +196,7 @@ func (tb *TelegramBot) sendMessage(chatID int64, text string) error {
 	// In a real implementation, you would make an HTTP POST request to:
 	// https://api.telegram.org/bot{token}/sendMessage
 	// with the appropriate JSON payload
-	
+
 	log.Info().Int64("chat_id", chatID).Str("text", text).Msg("Sending Telegram message")
 	return nil
 }

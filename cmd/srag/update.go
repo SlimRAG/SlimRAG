@@ -18,7 +18,7 @@ import (
 
 var updateCmd = &cli.Command{
 	Name:  "update",
-	Usage: "Update documents by processing changed .md files in a directory",
+	Usage: "Update documents and make embeddings",
 	Arguments: []cli.Argument{
 		&cli.StringArg{Name: "path"},
 	},
@@ -26,6 +26,7 @@ var updateCmd = &cli.Command{
 		flagDSN,
 		flagEmbeddingBaseURL,
 		flagEmbeddingModel,
+		flagEmbeddingDimension,
 		&cli.StringFlag{
 			Name:    "config",
 			Aliases: []string{"c"},
@@ -84,6 +85,7 @@ var updateCmd = &cli.Command{
 		dsn := command.String("dsn")
 		baseURL := command.String("embedding-base-url")
 		embeddingModel := command.String("embedding-model")
+		embeddingDimensions := command.Int64("embedding-dimension")
 		configPath := command.String("config")
 		strategy := command.String("strategy")
 		maxSize := command.Int("max-size")
@@ -103,9 +105,10 @@ var updateCmd = &cli.Command{
 		// Create RAG instance
 		embeddingClient := openai.NewClient(option.WithBaseURL(baseURL))
 		r := rag.RAG{
-			DB:              db,
-			EmbeddingClient: &embeddingClient,
-			EmbeddingModel:  embeddingModel,
+			DB:                  db,
+			EmbeddingClient:     &embeddingClient,
+			EmbeddingModel:      embeddingModel,
+			EmbeddingDimensions: embeddingDimensions,
 		}
 
 		// Create chunking config
@@ -237,11 +240,11 @@ var updateCmd = &cli.Command{
 			}
 
 			processedCount++
-			bar.Add(1)
+			_ = bar.Add(1)
 			log.Info().Str("file", filePath).Int("chunks", len(doc.Chunks)).Msg("Processed file")
 		}
 
-		bar.Finish()
+		_ = bar.Finish()
 		log.Info().Int("processed", processedCount).Int("skipped", skippedCount).Msg("File processing completed")
 
 		// Compute embeddings for new chunks
