@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/charmbracelet/glamour"
 	"github.com/goccy/go-json"
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/openai/openai-go"
@@ -122,6 +123,14 @@ func ask(ctx context.Context, r *rag.RAG, query string, limit int, topN int) err
 	}
 
 	fmt.Println("The answer is:")
-	fmt.Println(answer)
+
+	// Use glamour to render markdown
+	rendered, err := glamour.Render(answer, "dark")
+	if err != nil {
+		fmt.Printf("Error rendering markdown: %v\n", err)
+		fmt.Println(answer)
+		return nil
+	}
+	fmt.Println(rendered)
 	return nil
 }
