@@ -259,7 +259,7 @@ func processTextFile(ctx context.Context, r *rag.RAG, filePath string, retrieval
 			continue
 		}
 
-		fmt.Println("---\n")
+		fmt.Println("---")
 	}
 
 	if queryCount == 0 {

@@ -114,7 +114,8 @@ type GitHubIssue struct {
 
 // ProcessedIssues stores the IDs of issues that have been processed
 type ProcessedIssues struct {
-	IssueIDs []int `json:"issue_ids"`
+	IssueIDs               []int `json:"issue_ids"`
+	NonConsultationIssueIDs []int `json:"non_consultation_issue_ids"`
 }
 
 // IssueProcessor handles GitHub issue processing
@@ -132,7 +133,7 @@ func (p *IssueProcessor) ProcessIssues(ctx context.Context, limit int) error {
 	processed, err := p.loadProcessedIssues()
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to load processed issues, starting fresh")
-		processed = &ProcessedIssues{IssueIDs: []int{}}
+		processed = &ProcessedIssues{IssueIDs: []int{}, NonConsultationIssueIDs: []int{}}
 	}
 
 	// Fetch open issues from GitHub
@@ -152,7 +153,12 @@ func (p *IssueProcessor) ProcessIssues(ctx context.Context, limit int) error {
 		}
 
 		// Check if it's a consultation question
-		if !p.isConsultationQuestion(issue) {
+		isConsultation, err := p.isConsultationQuestionCached(issue, processed)
+		if err != nil {
+			log.Error().Err(err).Int("issue_number", issue.Number).Msg("Failed to determine consultation type, skipping")
+			continue
+		}
+		if !isConsultation {
 			log.Info().Int("issue_number", issue.Number).Msg("Not a consultation question, skipping")
 			continue
 		}
@@ -219,6 +225,38 @@ func (p *IssueProcessor) fetchIssues(ctx context.Context, limit int) ([]GitHubIs
 	}
 
 	return issues, nil
+}
+
+// isConsultationQuestionCached checks cache and determines if an issue is a consultation question
+func (p *IssueProcessor) isConsultationQuestionCached(issue GitHubIssue, processed *ProcessedIssues) (bool, error) {
+	// First check if it's already cached as non-consultation
+	if p.isNonConsultationCached(processed, issue.Number) {
+		return false, nil
+	}
+	
+	// Check if it's a consultation question using LLM
+	isConsultation := p.isConsultationQuestion(issue)
+	
+	// If it's not a consultation question, cache it
+	if !isConsultation {
+		processed.NonConsultationIssueIDs = append(processed.NonConsultationIssueIDs, issue.Number)
+		// Save the updated cache
+		if err := p.saveProcessedIssues(processed); err != nil {
+			log.Warn().Err(err).Int("issue_number", issue.Number).Msg("Failed to save non-consultation cache")
+		}
+	}
+	
+	return isConsultation, nil
+}
+
+// isNonConsultationCached checks if an issue is cached as non-consultation
+func (p *IssueProcessor) isNonConsultationCached(processed *ProcessedIssues, issueNumber int) bool {
+	for _, id := range processed.NonConsultationIssueIDs {
+		if id == issueNumber {
+			return true
+		}
+	}
+	return false
 }
 
 // isConsultationQuestion determines if an issue is a consultation question using LLM
@@ -452,7 +490,7 @@ func (p *IssueProcessor) postAnswer(ctx context.Context, issue GitHubIssue, answ
 // loadProcessedIssues loads the list of processed issue IDs
 func (p *IssueProcessor) loadProcessedIssues() (*ProcessedIssues, error) {
 	if _, err := os.Stat(p.ProcessedFile); os.IsNotExist(err) {
-		return &ProcessedIssues{IssueIDs: []int{}}, nil
+		return &ProcessedIssues{IssueIDs: []int{}, NonConsultationIssueIDs: []int{}}, nil
 	}
 
 	data, err := os.ReadFile(p.ProcessedFile)

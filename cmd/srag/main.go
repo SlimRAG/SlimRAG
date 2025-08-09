@@ -3,8 +3,6 @@ package main
 import (
 	"context"
 	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/joho/godotenv"
 	"github.com/rs/zerolog"
@@ -37,10 +35,10 @@ func main() {
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	log.Logger = zerolog.New(pzlog.NewPtermWriter()).With().Timestamp().Caller().Stack().Logger()
 
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
+	//ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	//defer stop()
 
-	err := cmd.Run(ctx, os.Args)
+	err := cmd.Run(context.TODO(), os.Args)
 	if err != nil {
 		log.Error().Err(err).Msg("Unexpected error")
 	}
