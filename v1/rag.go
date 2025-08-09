@@ -159,7 +159,7 @@ func (r *RAG) QueryDocumentChunks(ctx context.Context, query string, limit int) 
 	}
 	queryEmbedding := toFloat32Slice(rsp.Data[0].Embedding)
 
-	rows, err := r.DB.QueryContext(ctx, `SELECT id, document_id, text, embedding FROM document_chunks
+	rows, err := r.DB.QueryContext(ctx, `SELECT id, document_id, file_path, text, embedding FROM document_chunks
 		ORDER BY array_distance(embedding, ?::FLOAT[1024]) LIMIT ?;
 	`, queryEmbedding, limit)
 	if err != nil {
@@ -170,12 +170,23 @@ func (r *RAG) QueryDocumentChunks(ctx context.Context, query string, limit int) 
 	var chunks []DocumentChunk
 	for rows.Next() {
 		var chunk DocumentChunk
-		var embedding []float32
-		err = rows.Scan(&chunk.ID, &chunk.Document, &chunk.Text, &embedding)
+		var embeddingInterface interface{}
+		err = rows.Scan(&chunk.ID, &chunk.Document, &chunk.FilePath, &chunk.Text, &embeddingInterface)
 		if err != nil {
 			return nil, err
 		}
-		chunk.Embedding = embedding
+
+		// Convert embedding from []interface{} to []float32
+		if embeddingInterface != nil {
+			if embeddingSlice, ok := embeddingInterface.([]interface{}); ok {
+				chunk.Embedding = make([]float32, len(embeddingSlice))
+				for i, v := range embeddingSlice {
+					if f, ok := v.(float64); ok {
+						chunk.Embedding[i] = float32(f)
+					}
+				}
+			}
+		}
 		chunks = append(chunks, chunk)
 	}
 
@@ -183,15 +194,27 @@ func (r *RAG) QueryDocumentChunks(ctx context.Context, query string, limit int) 
 }
 
 func (r *RAG) GetDocumentChunk(id string) (*DocumentChunk, error) {
-	row := r.DB.QueryRow("SELECT id, document_id, text, embedding FROM document_chunks WHERE id = ?", id)
+	row := r.DB.QueryRow("SELECT id, document_id, file_path, text, embedding FROM document_chunks WHERE id = ?", id)
 
 	var chunk DocumentChunk
-	var embedding []float32
-	err := row.Scan(&chunk.ID, &chunk.Document, &chunk.Text, &embedding)
+	var embeddingInterface interface{}
+	err := row.Scan(&chunk.ID, &chunk.Document, &chunk.FilePath, &chunk.Text, &embeddingInterface)
 	if err != nil {
 		return nil, err
 	}
-	chunk.Embedding = embedding
+
+	// Convert embedding from []interface{} to []float32
+	if embeddingInterface != nil {
+		if embeddingSlice, ok := embeddingInterface.([]interface{}); ok {
+			chunk.Embedding = make([]float32, len(embeddingSlice))
+			for i, v := range embeddingSlice {
+				if f, ok := v.(float64); ok {
+					chunk.Embedding[i] = float32(f)
+				}
+			}
+		}
+	}
+
 	return &chunk, nil
 }
 
@@ -221,17 +244,19 @@ func (r *RAG) Ask(ctx context.Context, p *AskParameter) (string, error) {
 	}
 
 	prompt := buildPrompt(p.Query, chunks)
-	c, err := r.AssistantClient.Completions.New(ctx, openai.CompletionNewParams{
-		Model:  openai.CompletionNewParamsModel(r.AssistantModel),
-		Prompt: openai.CompletionNewParamsPromptUnion{OfString: openai.String(prompt)},
+	c, err := r.AssistantClient.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
+		Model: r.AssistantModel,
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			openai.UserMessage(prompt),
+		},
 	})
 	if err != nil {
 		return "", err
 	}
 	if len(c.Choices) > 0 {
-		return c.Choices[0].Text, nil
+		return string(c.Choices[0].Message.Content), nil
 	}
-	return "", errors.New("no choices returned from completion")
+	return "", errors.New("no choices returned from chat completion")
 }
 
 // CalculateFileHash calculates xxh64 hash of a file

@@ -29,6 +29,7 @@ var askCmd = &cli.Command{
 		flagEmbeddingModel,
 		flagAssistantBaseURL,
 		flagAssistantModel,
+		flagAssistantAPIKey,
 		&cli.IntFlag{Name: "limit", Value: 40},
 		&cli.IntFlag{Name: "top-n", Value: 10},
 		&cli.IntFlag{Name: "jobs", Value: 4},
@@ -44,6 +45,7 @@ var askCmd = &cli.Command{
 		embeddingModel := command.String("embedding-model")
 		assistantBaseURL := command.String("assistant-base-url")
 		assistantModel := command.String("assistant-model")
+		assistantAPIKey := command.String("assistant-api-key")
 		limit := command.Int("limit")
 		topN := command.Int("top-n")
 		jobs := command.Int("jobs")
@@ -54,7 +56,7 @@ var askCmd = &cli.Command{
 		}
 
 		embeddingClient := openai.NewClient(option.WithBaseURL(embeddingBaseURL))
-		assistantClient := openai.NewClient(option.WithBaseURL(assistantBaseURL))
+		assistantClient := openai.NewClient(option.WithBaseURL(assistantBaseURL), option.WithAPIKey(assistantAPIKey))
 		r := rag.RAG{
 			DB:              db,
 			EmbeddingClient: &embeddingClient,
@@ -108,9 +110,9 @@ func ask(ctx context.Context, r *rag.RAG, query string, limit int, topN int) err
 	}
 
 	tw := table.NewWriter()
-	tw.AppendHeader(table.Row{"Chunk ID", "Document"})
+	tw.AppendHeader(table.Row{"Chunk ID", "Document", "File Path"})
 	for _, chunk := range chunks {
-		tw.AppendRow(table.Row{chunk.ID, chunk.Document})
+		tw.AppendRow(table.Row{chunk.ID, chunk.Document, chunk.FilePath})
 	}
 	fmt.Println(tw.Render())
 

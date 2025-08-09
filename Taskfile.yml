@@ -28,3 +28,7 @@ tasks:
   install-tools:
     cmds:
       - go install golang.org/x/tools/cmd/goimports@latest
+
+  ask:
+    cmds:
+      - go run ./cmd/srag ask "救救孩子,我怎么用 easytier 组网？"

@@ -37,6 +37,11 @@ var flagAssistantModel = &cli.StringFlag{
 	Sources: cli.NewValueSourceChain(cli.EnvVar("RAG_ASSISTANT_MODEL")),
 }
 
+var flagAssistantAPIKey = &cli.StringFlag{
+	Name:    "assistant-api-key",
+	Sources: cli.NewValueSourceChain(cli.EnvVar("RAG_ASSISTANT_API_KEY")),
+}
+
 func getArgumentQuery(command *cli.Command) (string, error) {
 	query := command.StringArg("query")
 	if query == "" {
