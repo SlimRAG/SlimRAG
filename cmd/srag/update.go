@@ -28,40 +28,9 @@ var updateCmd = &cli.Command{
 		flagEmbeddingModel,
 		flagEmbeddingDimension,
 		&cli.StringFlag{
-			Name:    "config",
+			Name:    "chunker-config",
 			Aliases: []string{"c"},
 			Usage:   "Chunker configuration file path",
-			Config:  trimSpace,
-		},
-		&cli.StringFlag{
-			Name:    "strategy",
-			Aliases: []string{"s"},
-			Usage:   "Chunking strategy: fixed, semantic, sentence, adaptive",
-			Value:   "adaptive",
-			Config:  trimSpace,
-		},
-		&cli.IntFlag{
-			Name:    "max-size",
-			Aliases: []string{"max"},
-			Usage:   "Maximum chunk size in characters",
-			Value:   1000,
-		},
-		&cli.IntFlag{
-			Name:    "min-size",
-			Aliases: []string{"min"},
-			Usage:   "Minimum chunk size in characters",
-			Value:   100,
-		},
-		&cli.IntFlag{
-			Name:  "overlap",
-			Usage: "Overlap size in characters",
-			Value: 50,
-		},
-		&cli.StringFlag{
-			Name:    "language",
-			Aliases: []string{"l"},
-			Usage:   "Language: zh, en, auto",
-			Value:   "auto",
 			Config:  trimSpace,
 		},
 		&cli.IntFlag{
@@ -100,26 +69,12 @@ var updateCmd = &cli.Command{
 		if err != nil {
 			return err
 		}
-		defer db.Close()
+		defer func() { _ = db.Close() }()
 
 		// Validate or set embedding dimension
-		storedDim, err := rag.GetStoredEmbeddingDimension(db)
+		embeddingDimensions = rag.GetStoredEmbeddingDimension(db, embeddingDimensions)
 		if err != nil {
 			return fmt.Errorf("failed to get stored embedding dimension: %w", err)
-		}
-
-		if storedDim == 0 {
-			// First time setup - set the dimension
-			log.Info().Int64("dimension", embeddingDimensions).Msg("Setting initial embedding dimension")
-			err = rag.SetEmbeddingDimension(db, embeddingDimensions)
-			if err != nil {
-				return fmt.Errorf("failed to set embedding dimension: %w", err)
-			}
-			log.Info().Int64("dimension", embeddingDimensions).Msg("Successfully set initial embedding dimension")
-		} else if storedDim != embeddingDimensions {
-			// Dimension mismatch
-			log.Error().Int64("stored", storedDim).Int64("provided", embeddingDimensions).Msg("Embedding dimension mismatch")
-			return fmt.Errorf("embedding dimension mismatch: stored %d, provided %d", storedDim, embeddingDimensions)
 		}
 
 		// Create RAG instance

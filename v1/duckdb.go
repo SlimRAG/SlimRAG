@@ -3,9 +3,11 @@ package rag
 import (
 	"database/sql"
 	"fmt"
+	"strconv"
 
 	"github.com/cockroachdb/errors"
 	"github.com/marcboeker/go-duckdb/v2"
+	"github.com/rs/zerolog/log"
 )
 
 func OpenDuckDB(dsn string) (*sql.DB, error) {
@@ -105,23 +107,26 @@ func migrateDuckDB(db *sql.DB, dsn string) error {
 }
 
 // GetStoredEmbeddingDimension retrieves the stored embedding dimension from the database
-func GetStoredEmbeddingDimension(db *sql.DB) (int64, error) {
+func GetStoredEmbeddingDimension(db *sql.DB, defaultDimension int64) int64 {
 	var storedDimension string
-	err := db.QueryRow("SELECT value FROM rag_metadata WHERE key = 'embedding_dimension'").Scan(&storedDimension)
+	err := db.QueryRow("SELECT value FROM rag_metadata WHERE key = 'embedding_dimension'").
+		Scan(&storedDimension)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return 0, nil // No dimension set yet
-		}
-		return 0, errors.Wrap(err, "Failed to query embedding dimension")
+		return defaultDimension
 	}
 
-	var dimension int64
-	_, err = fmt.Sscanf(storedDimension, "%d", &dimension)
+	d, err := strconv.ParseInt(storedDimension, 10, 64)
 	if err != nil {
-		return 0, errors.Wrap(err, "Failed to parse embedding dimension")
+		log.Panic().Err(err).Msg("")
 	}
 
-	return dimension, nil
+	if d != defaultDimension {
+		log.Warn().
+			Int64("stored_dimension", d).
+			Int64("default_dimension", defaultDimension).
+			Msg("Stored embedding dimension does not match default value, using stored value")
+	}
+	return d
 }
 
 // SetEmbeddingDimension sets the embedding dimension in the database
@@ -244,7 +249,7 @@ func RebuildTableWithNewDimension(db *sql.DB, newDimension int64) error {
 	if count > 0 {
 		_, err = tx.Exec(`
 			INSERT INTO document_chunks (id, document_id, file_path, text, start_offset, end_offset)
-			SELECT id, document_id, file_path, text, start_offset, end_offset 
+			SELECT id, document_id, file_path, text, start_offset, end_offset
 			FROM document_chunks_backup
 		`)
 		if err != nil {
