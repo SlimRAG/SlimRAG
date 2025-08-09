@@ -32,7 +32,7 @@ var askCmd = &cli.Command{
 		flagAssistantBaseURL,
 		flagAssistantModel,
 		flagAssistantAPIKey,
-		&cli.IntFlag{Name: "retrieval-limit", Value: 100, Usage: "Number of chunks to retrieve from vector search"},
+		&cli.IntFlag{Name: "retrieval-limit", Value: 40, Usage: "Number of chunks to retrieve from vector search"},
 		&cli.IntFlag{Name: "selected-limit", Value: 10, Usage: "Number of chunks for LLM to select and use for final answer"},
 		&cli.BoolFlag{
 			Name:    "vector-only",
@@ -153,7 +153,7 @@ func ask(ctx context.Context, r *rag.RAG, query string, retrievalLimit int, sele
 		SelectedLimit:  selectedLimit,
 		SystemPrompt:   systemPrompt,
 	}
-	
+
 	answer, err := r.Ask(ctx, askParam)
 	if err != nil {
 		return err
@@ -173,7 +173,7 @@ func ask(ctx context.Context, r *rag.RAG, query string, retrievalLimit int, sele
 // processQueryFile handles reading queries from different file formats
 func processQueryFile(ctx context.Context, r *rag.RAG, filePath string, retrievalLimit int, selectedLimit int, vectorOnly bool, systemPrompt string, jobs int) error {
 	ext := strings.ToLower(filepath.Ext(filePath))
-	
+
 	switch ext {
 	case ".ndjson", ".jsonl":
 		return processNdjsonFile(ctx, r, filePath, retrievalLimit, selectedLimit, vectorOnly, systemPrompt, jobs)
@@ -219,28 +219,28 @@ func processTextFile(ctx context.Context, r *rag.RAG, filePath string, retrieval
 
 	lines := strings.Split(string(content), "\n")
 	queryCount := 0
-	
+
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
-		
+
 		queryCount++
 		fmt.Printf("Processing query %d: %s\n", queryCount, line)
-		
+
 		err := ask(ctx, r, line, retrievalLimit, selectedLimit, vectorOnly, systemPrompt)
 		if err != nil {
 			fmt.Printf("Error processing query '%s': %v\n", line, err)
 			continue
 		}
-		
+
 		fmt.Println("---\n")
 	}
-	
+
 	if queryCount == 0 {
 		fmt.Println("No queries found in the file")
 	}
-	
+
 	return nil
 }
