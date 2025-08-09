@@ -2,7 +2,6 @@ package rag
 
 import (
 	"encoding/hex"
-	"path/filepath"
 	"strings"
 
 	"github.com/cespare/xxhash"
@@ -13,6 +12,7 @@ type DocumentChunk struct {
 	ID          string    `gorm:"primaryKey"`
 	Document    string    `gorm:"not null"`
 	RawDocument string    `gorm:"not null"`
+	FilePath    string    `gorm:"not null"`
 	Text        string    `gorm:"not null" json:"text,omitzero"`
 	Embedding   []float32 `gorm:"type:float[]" json:"embedding,omitzero"`
 	Index       int       `gorm:"-:all" json:"index"`
@@ -31,6 +31,7 @@ func (c *DocumentChunk) Fix(d *Document) {
 	c.ID = hashString(c.Text)
 	c.Document = d.Document
 	c.RawDocument = d.RawDocument
+	c.FilePath = d.FilePath
 }
 
 type Document struct {
@@ -47,20 +48,13 @@ type AskParameter struct {
 }
 
 func (d *Document) Fix() {
-	var filePath string
-	if d.FilePath != "" {
-		filePath = d.FilePath
-	} else if d.FileName != "" {
-		// 尝试获取绝对路径
-		if absPath, err := filepath.Abs(d.FileName); err == nil {
-			filePath = absPath
-		} else {
-			filePath = d.FileName
-		}
+	// 使用所有 chunks 的文本内容生成 document_id
+	var fullContent strings.Builder
+	for _, chunk := range d.Chunks {
+		fullContent.WriteString(chunk.Text)
 	}
 
-	// 使用文件路径生成 document_id
-	d.Document = GenerateDocumentID(filePath)
+	d.Document = hashString(fullContent.String())
 	d.RawDocument = d.FileName
 	for _, chunk := range d.Chunks {
 		chunk.Fix(d)

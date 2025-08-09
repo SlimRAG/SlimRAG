@@ -37,6 +37,7 @@ func migrateDuckDB(db *sql.DB, dsn string) error {
 		CREATE TABLE IF NOT EXISTS document_chunks (
 			id VARCHAR PRIMARY KEY,
 			document_id VARCHAR,
+			file_path VARCHAR,
 			text VARCHAR,
 			start_offset INTEGER,
 			end_offset INTEGER,
@@ -45,6 +46,14 @@ func migrateDuckDB(db *sql.DB, dsn string) error {
 	`)
 	if err != nil {
 		return errors.Wrap(err, "Failed to create document_chunks table")
+	}
+
+	// Add file_path column if it doesn't exist
+	_, err = db.Exec(`
+		ALTER TABLE document_chunks ADD COLUMN IF NOT EXISTS file_path VARCHAR;
+	`)
+	if err != nil {
+		return errors.Wrap(err, "Failed to add file_path column")
 	}
 
 	// Create table to track processed files and their hashes

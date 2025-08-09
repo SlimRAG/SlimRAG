@@ -93,7 +93,7 @@ var chunkCmd = &cli.Command{
 			}
 
 			// 创建分块器
-			chunker, err := rag.NewDocumentChunker(config)
+			chunker, err := rag.NewDocumentChunker(config, "")
 			if err != nil {
 				return fmt.Errorf("failed to create chunker: %w", err)
 			}

@@ -40,11 +40,12 @@ func (r *RAG) UpsertDocumentChunks(document *Document) error {
 	defer func() { _ = tx.Rollback() }()
 
 	stmt, err := tx.Prepare(`
-		INSERT INTO document_chunks (id, document_id, text, start_offset, end_offset)
-		VALUES (?, ?, ?, ?, ?)
+		INSERT INTO document_chunks (id, document_id, file_path, text, start_offset, end_offset)
+		VALUES (?, ?, ?, ?, ?, ?)
 		ON CONFLICT (id) DO UPDATE SET
 			text = EXCLUDED.text,
-			document_id = EXCLUDED.document_id;
+			document_id = EXCLUDED.document_id,
+			file_path = EXCLUDED.file_path;
 	`)
 	if err != nil {
 		return err
@@ -55,6 +56,7 @@ func (r *RAG) UpsertDocumentChunks(document *Document) error {
 		_, err = stmt.Exec(
 			chunk.ID,
 			chunk.Document,
+			chunk.FilePath,
 			chunk.Text,
 			0, // start_offset is not used
 			0, // end_offset is not used

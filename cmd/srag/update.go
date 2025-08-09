@@ -132,7 +132,7 @@ var updateCmd = &cli.Command{
 		}
 
 		// Create document chunker
-		chunker, err := rag.NewDocumentChunker(config)
+		chunker, err := rag.NewDocumentChunker(config, path)
 		if err != nil {
 			return fmt.Errorf("failed to create chunker: %w", err)
 		}

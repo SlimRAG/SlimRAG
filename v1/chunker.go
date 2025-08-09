@@ -84,17 +84,28 @@ func LoadChunkingConfig(configPath string) (*ChunkingConfig, error) {
 type DocumentChunker struct {
 	config    *ChunkingConfig
 	segmenter *gse.Segmenter
+	cwd       string
 }
 
 // NewDocumentChunker 创建新的文档分块器
-func NewDocumentChunker(config *ChunkingConfig) (*DocumentChunker, error) {
+func NewDocumentChunker(config *ChunkingConfig, cwd string) (*DocumentChunker, error) {
+	var err error
+
 	if config == nil {
 		config = DefaultChunkingConfig()
+	}
+
+	if cwd == "" {
+		cwd, err = os.Getwd()
+		if err != nil {
+			log.Panic().Err(err).Stack().Msg("Getwd() failed")
+		}
 	}
 
 	chunker := &DocumentChunker{
 		config:    config,
 		segmenter: &gse.Segmenter{},
+		cwd:       cwd,
 	}
 
 	// 根据语言配置分词器
@@ -166,9 +177,16 @@ func (c *DocumentChunker) ChunkDocumentWithFilePath(content string, filePath str
 		chunks = c.adaptiveChunking(content)
 	}
 
+	// 计算相对路径
+	relPath, err := filepath.Rel(c.cwd, filePath)
+	if err != nil {
+		// 如果计算相对路径失败，使用完整路径
+		relPath = filePath
+	}
+
 	doc := &Document{
 		FileName:    filepath.Base(filePath),
-		FilePath:    filePath,
+		FilePath:    relPath,
 		RawDocument: filepath.Base(filePath),
 		Chunks:      chunks,
 	}
@@ -521,8 +539,13 @@ func ChunkMarkdownFile(markdownPath, configPath, outputPath string) error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
+	cwd, err := os.Getwd()
+	if err != nil {
+		log.Panic().Err(err).Stack().Msg("Getwd() failed")
+	}
+
 	// 创建分块器
-	chunker, err := NewDocumentChunker(config)
+	chunker, err := NewDocumentChunker(config, cwd)
 	if err != nil {
 		return fmt.Errorf("failed to create chunker: %w", err)
 	}
