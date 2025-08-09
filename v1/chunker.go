@@ -144,6 +144,39 @@ func (c *DocumentChunker) ChunkDocument(content string, fileName string) (*Docum
 	return doc, nil
 }
 
+// ChunkDocumentWithFilePath 对文档进行分块，使用文件路径生成document_id
+func (c *DocumentChunker) ChunkDocumentWithFilePath(content string, filePath string) (*Document, error) {
+	if content == "" {
+		return nil, fmt.Errorf("content is empty")
+	}
+
+	content = c.preprocessText(content)
+	var chunks []*DocumentChunk
+
+	switch c.config.Strategy {
+	case "fixed":
+		chunks = c.fixedSizeChunking(content)
+	case "semantic":
+		chunks = c.semanticChunking(content)
+	case "sentence":
+		chunks = c.sentenceChunking(content)
+	case "adaptive":
+		chunks = c.adaptiveChunking(content)
+	default:
+		chunks = c.adaptiveChunking(content)
+	}
+
+	doc := &Document{
+		FileName:    filepath.Base(filePath),
+		FilePath:    filePath,
+		RawDocument: filepath.Base(filePath),
+		Chunks:      chunks,
+	}
+
+	doc.Fix()
+	return doc, nil
+}
+
 // preprocessText 预处理文本
 func (c *DocumentChunker) preprocessText(text string) string {
 	// 移除多余的空白字符

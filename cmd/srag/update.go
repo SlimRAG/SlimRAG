@@ -210,8 +210,7 @@ var updateCmd = &cli.Command{
 			}
 
 			// Chunk document
-			fileName := filepath.Base(filePath)
-			doc, err := chunker.ChunkDocument(string(content), fileName)
+			doc, err := chunker.ChunkDocumentWithFilePath(string(content), filePath)
 			if err != nil {
 				log.Error().Err(err).Str("file", filePath).Msg("Failed to chunk document")
 				continue

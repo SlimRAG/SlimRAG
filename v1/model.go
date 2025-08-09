@@ -2,6 +2,7 @@ package rag
 
 import (
 	"encoding/hex"
+	"path/filepath"
 	"strings"
 
 	"github.com/cespare/xxhash"
@@ -34,6 +35,7 @@ func (c *DocumentChunk) Fix(d *Document) {
 
 type Document struct {
 	FileName    string           `json:"file_name"`
+	FilePath    string           `json:"file_path"`
 	Document    string           `json:"document"`
 	RawDocument string           `json:"raw_document"`
 	Chunks      []*DocumentChunk `json:"chunks"`
@@ -45,7 +47,20 @@ type AskParameter struct {
 }
 
 func (d *Document) Fix() {
-	d.Document = strings.TrimSuffix(d.FileName, ".md")
+	var filePath string
+	if d.FilePath != "" {
+		filePath = d.FilePath
+	} else if d.FileName != "" {
+		// 尝试获取绝对路径
+		if absPath, err := filepath.Abs(d.FileName); err == nil {
+			filePath = absPath
+		} else {
+			filePath = d.FileName
+		}
+	}
+
+	// 使用文件路径生成 document_id
+	d.Document = GenerateDocumentID(filePath)
 	d.RawDocument = d.FileName
 	for _, chunk := range d.Chunks {
 		chunk.Fix(d)
