@@ -49,6 +49,14 @@ var askCmd = &cli.Command{
 			Aliases: []string{"st"},
 			Usage:   "Custom system prompt text (overrides --system-prompt)",
 		},
+		&cli.BoolFlag{
+			Name:  "trace",
+			Usage: "Enable API call tracing and audit logging",
+		},
+		&cli.StringFlag{
+			Name:  "audit-log-dir",
+			Usage: "Directory for audit log files (default: ./audit_logs)",
+		},
 		&cli.IntFlag{Name: "jobs", Value: 4},
 	},
 	Action: func(ctx context.Context, command *cli.Command) error {
@@ -68,6 +76,8 @@ var askCmd = &cli.Command{
 		vectorOnly := command.Bool("vector-only")
 		systemPromptFile := command.String("system-prompt")
 		systemPromptText := command.String("system-text")
+		traceEnabled := command.Bool("trace")
+		auditLogDir := command.String("audit-log-dir")
 		jobs := command.Int("jobs")
 
 		// Handle system prompt
@@ -87,13 +97,27 @@ var askCmd = &cli.Command{
 			return err
 		}
 
+		// Create audit logger if trace is enabled
+		auditLogger := rag.NewAuditLogger(traceEnabled, auditLogDir)
+
+		// Create OpenAI clients
 		embeddingClient := openai.NewClient(option.WithBaseURL(embeddingBaseURL))
 		assistantClient := openai.NewClient(option.WithBaseURL(assistantBaseURL), option.WithAPIKey(assistantAPIKey))
+
+		// Wrap clients with audit logging if enabled
+		var embeddingClientInterface interface{} = &embeddingClient
+		var assistantClientInterface interface{} = &assistantClient
+
+		if traceEnabled {
+			embeddingClientInterface = rag.NewAuditEmbeddingsClient(&embeddingClient, auditLogger, embeddingModel)
+			assistantClientInterface = rag.NewAuditChatClient(&assistantClient, auditLogger, assistantModel)
+		}
+
 		r := rag.RAG{
 			DB:              db,
-			EmbeddingClient: &embeddingClient,
+			EmbeddingClient: embeddingClientInterface,
 			EmbeddingModel:  embeddingModel,
-			AssistantClient: &assistantClient,
+			AssistantClient: assistantClientInterface,
 			AssistantModel:  assistantModel,
 		}
 
@@ -147,35 +171,25 @@ func ask(ctx context.Context, r *rag.RAG, query string, retrievalLimit int, sele
 	// 第三阶段：基于选择的块生成答案
 	fmt.Println("\nThe answer is:")
 
-	// 直接使用已选择的块生成答案，避免重复调用
-	var prompt string
-	if systemPrompt != "" {
-		prompt = rag.BuildPromptWithSystem(query, selectedChunks, systemPrompt)
-	} else {
-		prompt = rag.BuildPrompt(query, selectedChunks)
-	}
-
-	c, err := r.AssistantClient.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
-		Model: r.AssistantModel,
-		Messages: []openai.ChatCompletionMessageParamUnion{
-			openai.UserMessage(prompt),
-		},
+	// Use the RAG's Ask method which handles the client interface properly
+	answer, err := r.Ask(ctx, &rag.AskParameter{
+		Query:          query,
+		RetrievalLimit: retrievalLimit,
+		SelectedLimit:  selectedLimit,
+		SystemPrompt:   systemPrompt,
 	})
 	if err != nil {
 		return err
 	}
 
-	if len(c.Choices) > 0 {
-		answer := c.Choices[0].Message.Content
-		// Use glamour to render markdown
-		rendered, err := glamour.Render(answer, "dark")
-		if err != nil {
-			fmt.Printf("Error rendering markdown: %v\n", err)
-			fmt.Println(answer)
-			return nil
-		}
-		fmt.Println(rendered)
+	// Use glamour to render markdown
+	rendered, err := glamour.Render(answer, "dark")
+	if err != nil {
+		fmt.Printf("Error rendering markdown: %v\n", err)
+		fmt.Println(answer)
+		return nil
 	}
+	fmt.Println(rendered)
 
 	return nil
 }

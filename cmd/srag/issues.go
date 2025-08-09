@@ -226,7 +226,7 @@ func (p *IssueProcessor) isConsultationQuestion(issue GitHubIssue) bool {
 	ctx := context.Background()
 
 	// Create a prompt for LLM to analyze the issue
-	prompt := fmt.Sprintf(`You are an expert at analyzing GitHub issues. Your task is to determine if the given issue is a consultation question that seeks help, advice, or information.
+	determinationPrompt := fmt.Sprintf(`You are an expert at analyzing GitHub issues. Your task is to determine if the given issue is a consultation question that seeks help, advice, or information.
 
 Consultation questions are typically:
 - Asking for help with usage or implementation
@@ -254,13 +254,18 @@ Respond with only "YES" if this is a consultation question, or "NO" if it is not
 		return p.isConsultationQuestionFallback(issue)
 	}
 
-	resp, err := p.RAG.AssistantClient.Completions.New(ctx, openai.CompletionNewParams{
-		Model: openai.CompletionNewParamsModel(p.RAG.AssistantModel),
-		Prompt: openai.CompletionNewParamsPromptUnion{
-			OfString: openai.String(prompt),
+	chatClient := rag.ToChatClient(p.RAG.AssistantClient)
+	if chatClient == nil {
+		// Fallback to simple keyword-based detection if RAG client is not available
+		return p.isConsultationQuestionFallback(issue)
+	}
+
+	resp, err := chatClient.Completions().New(ctx, openai.ChatCompletionNewParams{
+		Model: p.RAG.AssistantModel,
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			openai.UserMessage(determinationPrompt),
 		},
 		MaxTokens: openai.Int(10), // We only need a short YES/NO response
-		N:         openai.Int(1),
 	})
 
 	if err != nil {
@@ -273,7 +278,7 @@ Respond with only "YES" if this is a consultation question, or "NO" if it is not
 		return p.isConsultationQuestionFallback(issue)
 	}
 
-	response := strings.TrimSpace(strings.ToUpper(resp.Choices[0].Text))
+	response := strings.TrimSpace(strings.ToUpper(resp.Choices[0].Message.Content))
 	return response == "YES"
 }
 
@@ -367,6 +372,12 @@ func (p *IssueProcessor) generateAnswer(ctx context.Context, issue GitHubIssue) 
 		return "", fmt.Errorf("RAG system is not initialized")
 	}
 
+	// Get chat client for confidence evaluation
+	chatClient := rag.ToChatClient(p.RAG.AssistantClient)
+	if chatClient == nil {
+		return "", fmt.Errorf("Chat client is not initialized")
+	}
+
 	query := issue.Title
 	if issue.Body != "" {
 		query += "\n" + issue.Body
@@ -398,9 +409,11 @@ Evaluate the answer based on:
 
 Respond with only "HIGH" if the answer is confident and likely accurate, or "LOW" if the answer shows uncertainty, is vague, or may not be reliable.`, query, answer)
 
-	confidenceResp, err := p.RAG.AssistantClient.Completions.New(ctx, openai.CompletionNewParams{
-		Model:     openai.CompletionNewParamsModel(p.RAG.AssistantModel),
-		Prompt:    openai.CompletionNewParamsPromptUnion{OfString: openai.String(confidencePrompt)},
+	confidenceResp, err := chatClient.Completions().New(ctx, openai.ChatCompletionNewParams{
+		Model: p.RAG.AssistantModel,
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			openai.UserMessage(confidencePrompt),
+		},
 		MaxTokens: openai.Int(10),
 	})
 	if err != nil {
@@ -412,7 +425,7 @@ Respond with only "HIGH" if the answer is confident and likely accurate, or "LOW
 		return fmt.Sprintf("%s\n\n*Note: I generated this answer but couldn't evaluate my confidence level. Please verify the information.*", answer), nil
 	}
 
-	confidenceLevel := strings.TrimSpace(confidenceResp.Choices[0].Text)
+	confidenceLevel := strings.TrimSpace(confidenceResp.Choices[0].Message.Content)
 	if strings.ToUpper(confidenceLevel) == "LOW" {
 		return "I'm not confident enough to provide a reliable answer to this question based on the available documentation. The question might require more specific context, recent updates, or domain expertise that I don't have sufficient information about. I'd recommend:\n\n1. Checking the official documentation or recent updates\n2. Asking in community forums or discussions\n3. Consulting with maintainers or experienced users\n\nI want to be honest rather than potentially misleading you with an uncertain answer.", nil
 	}

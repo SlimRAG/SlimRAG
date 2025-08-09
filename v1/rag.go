@@ -23,10 +23,10 @@ import (
 type RAG struct {
 	DB                  *sql.DB
 	OSS                 *minio.Client
-	EmbeddingClient     *openai.Client
+	EmbeddingClient     interface{}
 	EmbeddingModel      string
 	EmbeddingDimensions int64
-	AssistantClient     *openai.Client
+	AssistantClient     interface{}
 	AssistantModel      string
 }
 
@@ -113,7 +113,12 @@ func (r *RAG) ComputeEmbeddings(ctx context.Context, onlyEmpty bool, workers int
 			}()
 
 			var rsp *openai.CreateEmbeddingResponse
-			rsp, err = r.EmbeddingClient.Embeddings.New(ctx, openai.EmbeddingNewParams{
+			embeddingClient := ToEmbeddingClient(r.EmbeddingClient)
+			if embeddingClient == nil {
+				log.Error().Msg("Failed to get embedding client")
+				return
+			}
+			rsp, err = embeddingClient.New(ctx, openai.EmbeddingNewParams{
 				Model: r.EmbeddingModel,
 				Input: openai.EmbeddingNewParamsInputUnion{
 					OfString: openai.String(chunk.Text),
@@ -149,7 +154,12 @@ func toFloat32Slice(v []float64) []float32 {
 }
 
 func (r *RAG) QueryDocumentChunks(ctx context.Context, query string, limit int) ([]DocumentChunk, error) {
-	rsp, err := r.EmbeddingClient.Embeddings.New(ctx, openai.EmbeddingNewParams{
+	embeddingClient := ToEmbeddingClient(r.EmbeddingClient)
+	if embeddingClient == nil {
+		return nil, errors.New("failed to get embedding client")
+	}
+
+	rsp, err := embeddingClient.New(ctx, openai.EmbeddingNewParams{
 		Model: r.EmbeddingModel,
 		Input: openai.EmbeddingNewParamsInputUnion{
 			OfString: openai.String(query),
@@ -229,7 +239,12 @@ func (r *RAG) Rerank(ctx context.Context, query string, chunks []DocumentChunk, 
 	// 构建 LLM 选择提示
 	selectionPrompt := r.buildSelectionPrompt(query, chunks, selectedLimit)
 
-	c, err := r.AssistantClient.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
+	chatClient := ToChatClient(r.AssistantClient)
+	if chatClient == nil {
+		return nil, errors.New("failed to get chat client")
+	}
+
+	c, err := chatClient.Completions().New(ctx, openai.ChatCompletionNewParams{
 		Model: r.AssistantModel,
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			openai.UserMessage(selectionPrompt),
@@ -329,7 +344,13 @@ func (r *RAG) Ask(ctx context.Context, p *AskParameter) (string, error) {
 	} else {
 		prompt = BuildPrompt(p.Query, selectedChunks)
 	}
-	c, err := r.AssistantClient.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
+
+	chatClient := ToChatClient(r.AssistantClient)
+	if chatClient == nil {
+		return "", errors.New("failed to get chat client")
+	}
+
+	c, err := chatClient.Completions().New(ctx, openai.ChatCompletionNewParams{
 		Model: r.AssistantModel,
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			openai.UserMessage(prompt),
