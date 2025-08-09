@@ -147,26 +147,36 @@ func ask(ctx context.Context, r *rag.RAG, query string, retrievalLimit int, sele
 	// 第三阶段：基于选择的块生成答案
 	fmt.Println("\nThe answer is:")
 
-	askParam := &rag.AskParameter{
-		Query:          query,
-		RetrievalLimit: retrievalLimit,
-		SelectedLimit:  selectedLimit,
-		SystemPrompt:   systemPrompt,
+	// 直接使用已选择的块生成答案，避免重复调用
+	var prompt string
+	if systemPrompt != "" {
+		prompt = rag.BuildPromptWithSystem(query, selectedChunks, systemPrompt)
+	} else {
+		prompt = rag.BuildPrompt(query, selectedChunks)
 	}
 
-	answer, err := r.Ask(ctx, askParam)
+	c, err := r.AssistantClient.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
+		Model: r.AssistantModel,
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			openai.UserMessage(prompt),
+		},
+	})
 	if err != nil {
 		return err
 	}
 
-	// Use glamour to render markdown
-	rendered, err := glamour.Render(answer, "dark")
-	if err != nil {
-		fmt.Printf("Error rendering markdown: %v\n", err)
-		fmt.Println(answer)
-		return nil
+	if len(c.Choices) > 0 {
+		answer := c.Choices[0].Message.Content
+		// Use glamour to render markdown
+		rendered, err := glamour.Render(answer, "dark")
+		if err != nil {
+			fmt.Printf("Error rendering markdown: %v\n", err)
+			fmt.Println(answer)
+			return nil
+		}
+		fmt.Println(rendered)
 	}
-	fmt.Println(rendered)
+
 	return nil
 }
 
