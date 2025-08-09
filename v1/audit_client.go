@@ -111,11 +111,11 @@ func sanitizeMessages(messages []openai.ChatCompletionMessageParamUnion) []map[s
 
 		// Get the string representation to analyze message structure
 		msgStr := fmt.Sprintf("%v", msg)
-		
+
 		// Try to determine role based on field positions in the struct
 		// Based on the pattern: {<nil> <nil> content <nil> <nil> <nil> {{<nil>}}}
 		fields := strings.Fields(strings.ReplaceAll(strings.ReplaceAll(msgStr, "{", ""), "}", ""))
-		
+
 		// Count non-nil fields to infer content presence
 		nonNilCount := 0
 		for _, field := range fields {
@@ -123,7 +123,7 @@ func sanitizeMessages(messages []openai.ChatCompletionMessageParamUnion) []map[s
 				nonNilCount++
 			}
 		}
-		
+
 		// Provide content size estimation
 		if nonNilCount > 1 {
 			sanitizedMsg["content"] = fmt.Sprintf("[Chat message: substantial content]")

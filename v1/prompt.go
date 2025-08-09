@@ -6,7 +6,7 @@ import (
 )
 
 func BuildPrompt(query string, documents []DocumentChunk) string {
-	return BuildPromptWithSystem(query, documents, "根据以下知识，使用中文回答问题：")
+	return BuildPromptWithSystem(query, documents, "Answer the question based on the following knowledge in Chinese: ")
 }
 
 func BuildPromptWithSystem(query string, documents []DocumentChunk, systemPrompt string) string {
@@ -14,9 +14,9 @@ func BuildPromptWithSystem(query string, documents []DocumentChunk, systemPrompt
 	b.WriteString(systemPrompt)
 	b.WriteString("\n\n")
 	for i, doc := range documents {
-		b.WriteString(fmt.Sprintf("知识片段 %d：%s\n\n", i, doc.Text))
+		b.WriteString(fmt.Sprintf("Knowledge fragment %d: %s\n\n", i, doc.Text))
 	}
-	b.WriteString("问题：")
+	b.WriteString("Question: ")
 	b.WriteString(query)
 	return b.String()
 }

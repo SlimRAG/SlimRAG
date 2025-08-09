@@ -230,13 +230,13 @@ func (r *RAG) GetDocumentChunk(id string) (*DocumentChunk, error) {
 	return &chunk, nil
 }
 
-// Rerank 使用 LLM 来选择与查询最相关的文档块
+// Rerank uses LLM to select the most relevant document chunks for the query
 func (r *RAG) Rerank(ctx context.Context, query string, chunks []DocumentChunk, selectedLimit int) ([]DocumentChunk, error) {
 	if len(chunks) <= selectedLimit {
 		return chunks, nil
 	}
 
-	// 构建 LLM 选择提示
+	// Build LLM selection prompt
 	selectionPrompt := r.buildSelectionPrompt(query, chunks, selectedLimit)
 
 	chatClient := ToChatClient(r.AssistantClient)
@@ -258,13 +258,13 @@ func (r *RAG) Rerank(ctx context.Context, query string, chunks []DocumentChunk, 
 		return nil, errors.New("no choices returned from LLM selection")
 	}
 
-	// 解析 LLM 返回的索引选择
+	// Parse LLM returned index selection
 	selectedIndices, err := r.parseSelectedIndices(string(c.Choices[0].Message.Content), len(chunks))
 	if err != nil {
 		return nil, err
 	}
 
-	// 根据选择的索引返回文档块
+	// Return document chunks based on selected indices
 	var selectedChunks []DocumentChunk
 	for _, idx := range selectedIndices {
 		if idx < len(chunks) {
@@ -276,25 +276,25 @@ func (r *RAG) Rerank(ctx context.Context, query string, chunks []DocumentChunk, 
 	return selectedChunks, nil
 }
 
-// buildSelectionPrompt 构建用于 LLM 选择文档块的提示
+// buildSelectionPrompt builds the prompt for LLM to select document chunks
 func (r *RAG) buildSelectionPrompt(query string, chunks []DocumentChunk, selectedLimit int) string {
 	var b strings.Builder
-	b.WriteString("你是一个智能文档检索助手。请根据用户查询，从下面的文档块中选择最相关的 ")
+	b.WriteString("You are an intelligent document retrieval assistant. Please select the most relevant ")
 	b.WriteString(fmt.Sprintf("%d", selectedLimit))
-	b.WriteString(" 个块。请只返回索引编号，每行一个，按相关性从高到低排序。\n\n")
-	b.WriteString("用户查询：")
+	b.WriteString(" chunks from the following document blocks. Please only return index numbers, one per line, sorted by relevance from highest to lowest.\n\n")
+	b.WriteString("User query: ")
 	b.WriteString(query)
-	b.WriteString("\n\n文档块列表：\n\n")
+	b.WriteString("\n\nDocument block list:\n\n")
 
 	for i, chunk := range chunks {
 		b.WriteString(fmt.Sprintf("[%d] %s\n\n", i, chunk.Text))
 	}
 
-	b.WriteString(fmt.Sprintf("\n请选择最相关的 %d 个块，只返回索引编号：", selectedLimit))
+	b.WriteString(fmt.Sprintf("\nPlease select the most relevant %d chunks, return only index numbers: ", selectedLimit))
 	return b.String()
 }
 
-// parseSelectedIndices 解析 LLM 返回的索引选择
+// parseSelectedIndices parses the index selection returned by LLM
 func (r *RAG) parseSelectedIndices(content string, maxIndex int) ([]int, error) {
 	lines := strings.Split(strings.TrimSpace(content), "\n")
 	var indices []int
@@ -305,7 +305,7 @@ func (r *RAG) parseSelectedIndices(content string, maxIndex int) ([]int, error) 
 			continue
 		}
 
-		// 提取数字
+		// Extract numbers
 		var idx int
 		n, err := fmt.Sscanf(line, "%d", &idx)
 		if err != nil || n != 1 {
@@ -325,19 +325,19 @@ func (r *RAG) parseSelectedIndices(content string, maxIndex int) ([]int, error) 
 }
 
 func (r *RAG) Ask(ctx context.Context, p *AskParameter) (string, error) {
-	// 第一阶段：向量检索大量文档块
+	// Phase 1: Vector retrieval of large number of document chunks
 	retrievedChunks, err := r.QueryDocumentChunks(ctx, p.Query, p.RetrievalLimit)
 	if err != nil {
 		return "", err
 	}
 
-	// 第二阶段：LLM 选择最相关的文档块
+	// Phase 2: LLM selects the most relevant document chunks
 	selectedChunks, err := r.Rerank(ctx, p.Query, retrievedChunks, p.SelectedLimit)
 	if err != nil {
 		return "", err
 	}
 
-	// 第三阶段：基于选择的文档块生成最终答案
+	// Phase 3: Generate final answer based on selected document chunks
 	var prompt string
 	if p.SystemPrompt != "" {
 		prompt = BuildPromptWithSystem(p.Query, selectedChunks, p.SystemPrompt)

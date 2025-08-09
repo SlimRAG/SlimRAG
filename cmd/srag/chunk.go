@@ -70,16 +70,16 @@ var chunkCmd = &cli.Command{
 			return fmt.Errorf("input file path is required")
 		}
 
-		// 获取输出路径
+		// Get output path
 		outputPath := command.String("output")
 		if outputPath == "" {
 			outputPath = inputPath + ".chunks.json"
 		}
 
-		// 获取配置文件路径
+		// Get configuration file path
 		configPath := command.String("config")
 
-		// 如果没有指定配置文件，使用命令行参数创建临时配置
+		// If no configuration file specified, create temporary config from command line parameters
 		if configPath == "" {
 			config := &rag.ChunkingConfig{
 				MaxChunkSize:        command.Int("max-size"),
@@ -92,13 +92,13 @@ var chunkCmd = &cli.Command{
 				SimilarityThreshold: 0.7,
 			}
 
-			// 创建分块器
+			// Create chunker
 			chunker, err := rag.NewDocumentChunker(config, "")
 			if err != nil {
 				return fmt.Errorf("failed to create chunker: %w", err)
 			}
 
-			// 读取并分块文档
+			// Read and chunk document
 			content, err := os.ReadFile(inputPath)
 			if err != nil {
 				return fmt.Errorf("failed to read input file: %w", err)
@@ -112,7 +112,7 @@ var chunkCmd = &cli.Command{
 			doc.FilePath = inputPath
 			doc.Fix()
 
-			// 保存结果
+			// Save results
 			data, err := json.MarshalIndent(doc, "", "  ")
 			if err != nil {
 				return fmt.Errorf("failed to marshal JSON: %w", err)
@@ -127,7 +127,7 @@ var chunkCmd = &cli.Command{
 			return nil
 		}
 
-		// 使用配置文件
+		// Use configuration file
 		err := rag.ChunkMarkdownFile(inputPath, configPath, outputPath)
 		if err != nil {
 			return fmt.Errorf("failed to chunk document: %w", err)

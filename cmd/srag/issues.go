@@ -19,8 +19,8 @@ import (
 	"github.com/fanyang89/rag/v1"
 )
 
-var issuesCmd = &cli.Command{
-	Name:  "issues",
+var issueBotCmd = &cli.Command{
+	Name:  "issue-bot",
 	Usage: "Scan GitHub issues and answer consultation questions using RAG",
 	Flags: []cli.Flag{
 		flagDSN,
@@ -51,7 +51,7 @@ var issuesCmd = &cli.Command{
 		&cli.IntFlag{
 			Name:  "rag-limit",
 			Usage: "Number of document chunks to retrieve for RAG",
-			Value: 40,
+			Value: 20,
 		},
 	},
 	Action: func(ctx context.Context, command *cli.Command) error {
@@ -153,7 +153,7 @@ func (p *IssueProcessor) ProcessIssues(ctx context.Context, limit int) error {
 
 		// Check if it's a consultation question
 		if !p.isConsultationQuestion(issue) {
-			log.Debug().Int("issue_number", issue.Number).Msg("Not a consultation question, skipping")
+			log.Info().Int("issue_number", issue.Number).Msg("Not a consultation question, skipping")
 			continue
 		}
 
@@ -226,7 +226,8 @@ func (p *IssueProcessor) isConsultationQuestion(issue GitHubIssue) bool {
 	ctx := context.Background()
 
 	// Create a prompt for LLM to analyze the issue
-	determinationPrompt := fmt.Sprintf(`You are an expert at analyzing GitHub issues. Your task is to determine if the given issue is a consultation question that seeks help, advice, or information.
+	determinationPrompt := fmt.Sprintf(`You are an expert at analyzing GitHub issues.
+Your task is to determine if the given issue is a consultation question that seeks help, advice, or information.
 
 Consultation questions are typically:
 - Asking for help with usage or implementation
@@ -375,7 +376,7 @@ func (p *IssueProcessor) generateAnswer(ctx context.Context, issue GitHubIssue) 
 	// Get chat client for confidence evaluation
 	chatClient := rag.ToChatClient(p.RAG.AssistantClient)
 	if chatClient == nil {
-		return "", fmt.Errorf("Chat client is not initialized")
+		return "", fmt.Errorf("chat client is not initialized")
 	}
 
 	query := issue.Title
@@ -385,7 +386,7 @@ func (p *IssueProcessor) generateAnswer(ctx context.Context, issue GitHubIssue) 
 
 	param := &rag.AskParameter{
 		Query:          query,
-		RetrievalLimit: p.RAGLimit * 2, // 检索更多块供 LLM 选择
+		RetrievalLimit: p.RAGLimit * 2, // Retrieve more chunks for LLM selection
 		SelectedLimit:  p.RAGLimit,
 	}
 

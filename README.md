@@ -162,16 +162,16 @@ Start Telegram and Slack bots with rate limiting and queue management.
 ./srag bot --max-workers=5 --telegram-token="token"
 ```
 
-### `issues` - GitHub Issues Processing
+### `issue-bot` - GitHub Issues Processing
 
 Automatically answer consultation questions on GitHub issues.
 
 ```bash
 # Process issues from a repository
-./srag issues --repo "owner/repo" --limit 10
+./srag issue-bot --repo "owner/repo" --limit 10
 
 # Configure RAG parameters
-./srag issues --repo "owner/repo" --rag-limit 50 --processed-file processed.json
+./srag issue-bot --repo "owner/repo" --rag-limit 50 --processed-file processed.json
 ```
 
 ### `health` - Service Health Check

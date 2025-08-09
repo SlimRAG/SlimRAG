@@ -24,7 +24,7 @@ var cmd = &cli.Command{
 		healthCmd,
 		chunkCmd,
 		updateCmd,
-		issuesCmd,
+		issueBotCmd,
 		botCmd,
 	},
 }

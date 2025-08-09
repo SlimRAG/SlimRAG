@@ -135,7 +135,7 @@ type queryItem struct {
 }
 
 func ask(ctx context.Context, r *rag.RAG, query string, retrievalLimit int, selectedLimit int, vectorOnly bool, systemPrompt string) error {
-	// 第一阶段：向量检索并显示检索到的块
+	// Phase 1: Vector retrieval and display retrieved chunks
 	retrievedChunks, err := r.QueryDocumentChunks(ctx, query, retrievalLimit)
 	if err != nil {
 		return err
@@ -149,12 +149,12 @@ func ask(ctx context.Context, r *rag.RAG, query string, retrievalLimit int, sele
 	}
 	fmt.Println(tw.Render())
 
-	// 如果是 vector-only 模式，直接返回
+	// If vector-only mode, return directly
 	if vectorOnly {
 		return nil
 	}
 
-	// 第二阶段：LLM 选择最相关的块
+	// Phase 2: LLM selects the most relevant chunks
 	selectedChunks, err := r.Rerank(ctx, query, retrievedChunks, selectedLimit)
 	if err != nil {
 		return err
@@ -168,7 +168,7 @@ func ask(ctx context.Context, r *rag.RAG, query string, retrievalLimit int, sele
 	}
 	fmt.Println(tw2.Render())
 
-	// 第三阶段：基于选择的块生成答案
+	// Phase 3: Generate answer based on selected chunks
 	fmt.Println("\nThe answer is:")
 
 	// Use the RAG's Ask method which handles the client interface properly

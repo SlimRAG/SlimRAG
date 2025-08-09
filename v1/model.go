@@ -44,13 +44,13 @@ type Document struct {
 
 type AskParameter struct {
 	Query          string `json:"query"`
-	RetrievalLimit int    `json:"retrieval_limit"` // 向量检索的数量，如100
-	SelectedLimit  int    `json:"selected_limit"`  // LLM选择的数量，如10
-	SystemPrompt   string `json:"system_prompt"`   // 自定义系统提示
+	RetrievalLimit int    `json:"retrieval_limit"` // Number of vector retrievals, e.g., 100
+	SelectedLimit  int    `json:"selected_limit"`  // Number of LLM selections, e.g., 10
+	SystemPrompt   string `json:"system_prompt"`   // Custom system prompt
 }
 
 func (d *Document) Fix() {
-	// 使用所有 chunks 的文本内容生成 document_id
+	// Generate document_id using text content from all chunks
 	var fullContent strings.Builder
 	for _, chunk := range d.Chunks {
 		fullContent.WriteString(chunk.Text)

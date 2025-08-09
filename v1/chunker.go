@@ -14,19 +14,19 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// ChunkingConfig 分块配置
+// ChunkingConfig chunking configuration
 type ChunkingConfig struct {
-	MaxChunkSize        int     `json:"max_chunk_size"`       // 最大块大小（字符数）
-	MinChunkSize        int     `json:"min_chunk_size"`       // 最小块大小（字符数）
-	OverlapSize         int     `json:"overlap_size"`         // 重叠大小（字符数）
-	SentenceWindow      int     `json:"sentence_window"`      // 句子窗口大小
-	Strategy            string  `json:"strategy"`             // 分块策略: "fixed", "semantic", "sentence", "adaptive"
-	Language            string  `json:"language"`             // 语言: "zh", "en", "auto"
-	PreserveSections    bool    `json:"preserve_sections"`    // 是否保留章节结构
-	SimilarityThreshold float64 `json:"similarity_threshold"` // 语义相似度阈值
+	MaxChunkSize        int     `json:"max_chunk_size"`       // Maximum chunk size (in characters)
+	MinChunkSize        int     `json:"min_chunk_size"`       // Minimum chunk size (in characters)
+	OverlapSize         int     `json:"overlap_size"`         // Overlap size (in characters)
+	SentenceWindow      int     `json:"sentence_window"`      // Sentence window size
+	Strategy            string  `json:"strategy"`             // Chunking strategy: "fixed", "semantic", "sentence", "adaptive"
+	Language            string  `json:"language"`             // Language: "zh", "en", "auto"
+	PreserveSections    bool    `json:"preserve_sections"`    // Whether to preserve section structure
+	SimilarityThreshold float64 `json:"similarity_threshold"` // Semantic similarity threshold
 }
 
-// DefaultChunkingConfig 默认配置
+// DefaultChunkingConfig default configuration
 func DefaultChunkingConfig() *ChunkingConfig {
 	return &ChunkingConfig{
 		MaxChunkSize:        1000,
@@ -40,7 +40,7 @@ func DefaultChunkingConfig() *ChunkingConfig {
 	}
 }
 
-// LoadChunkingConfig 从JSON文件加载配置
+// LoadChunkingConfig loads configuration from JSON file
 func LoadChunkingConfig(configPath string) (*ChunkingConfig, error) {
 	if configPath == "" {
 		return DefaultChunkingConfig(), nil
@@ -48,7 +48,7 @@ func LoadChunkingConfig(configPath string) (*ChunkingConfig, error) {
 
 	file, err := os.Open(configPath)
 	if err != nil {
-		return DefaultChunkingConfig(), nil // 使用默认配置
+		return DefaultChunkingConfig(), nil // Use default configuration
 	}
 	defer file.Close()
 
@@ -63,7 +63,7 @@ func LoadChunkingConfig(configPath string) (*ChunkingConfig, error) {
 		return nil, err
 	}
 
-	// 验证配置
+	// Validate configuration
 	if config.MaxChunkSize <= 0 {
 		config.MaxChunkSize = 1000
 	}
@@ -80,14 +80,14 @@ func LoadChunkingConfig(configPath string) (*ChunkingConfig, error) {
 	return config, nil
 }
 
-// DocumentChunker 文档分块器
+// DocumentChunker document chunker
 type DocumentChunker struct {
 	config    *ChunkingConfig
 	segmenter *gse.Segmenter
 	cwd       string
 }
 
-// NewDocumentChunker 创建新的文档分块器
+// NewDocumentChunker creates a new document chunker
 func NewDocumentChunker(config *ChunkingConfig, cwd string) (*DocumentChunker, error) {
 	var err error
 
@@ -108,21 +108,21 @@ func NewDocumentChunker(config *ChunkingConfig, cwd string) (*DocumentChunker, e
 		cwd:       cwd,
 	}
 
-	// 根据语言配置分词器
+	// Configure tokenizer based on language
 	switch config.Language {
 	case "zh":
 		chunker.segmenter.LoadDict("zh_s")
 	case "en":
 		chunker.segmenter.LoadDict()
 	default:
-		// 自动检测，默认加载中文词典
+		// Auto-detect, load Chinese dictionary by default
 		chunker.segmenter.LoadDict("zh_s")
 	}
 
 	return chunker, nil
 }
 
-// ChunkDocument 对文档进行分块
+// ChunkDocument chunks a document
 func (c *DocumentChunker) ChunkDocument(content string, fileName string) (*Document, error) {
 	if content == "" {
 		return nil, fmt.Errorf("content is empty")
@@ -155,7 +155,7 @@ func (c *DocumentChunker) ChunkDocument(content string, fileName string) (*Docum
 	return doc, nil
 }
 
-// ChunkDocumentWithFilePath 对文档进行分块，使用文件路径生成document_id
+// ChunkDocumentWithFilePath chunks a document, using file path to generate document_id
 func (c *DocumentChunker) ChunkDocumentWithFilePath(content string, filePath string) (*Document, error) {
 	if content == "" {
 		return nil, fmt.Errorf("content is empty")
@@ -177,10 +177,10 @@ func (c *DocumentChunker) ChunkDocumentWithFilePath(content string, filePath str
 		chunks = c.adaptiveChunking(content)
 	}
 
-	// 计算相对路径
+	// Calculate relative path
 	relPath, err := filepath.Rel(c.cwd, filePath)
 	if err != nil {
-		// 如果计算相对路径失败，使用完整路径
+		// If calculating relative path fails, use full path
 		relPath = filePath
 	}
 
@@ -195,22 +195,22 @@ func (c *DocumentChunker) ChunkDocumentWithFilePath(content string, filePath str
 	return doc, nil
 }
 
-// preprocessText 预处理文本
+// preprocessText preprocesses text
 func (c *DocumentChunker) preprocessText(text string) string {
-	// 移除多余的空白字符
+	// Remove extra whitespace characters
 	text = regexp.MustCompile(`\s+`).ReplaceAllString(text, " ")
-	// 移除空字符
+	// Remove null characters
 	text = strings.ReplaceAll(text, "\u0000", "")
-	// 标准化换行符
+	// Normalize line endings
 	text = strings.ReplaceAll(text, "\r\n", "\n")
 	text = strings.ReplaceAll(text, "\r", "\n")
-	// 移除多余的换行符
+	// Remove extra line breaks
 	text = regexp.MustCompile(`\n{3,}`).ReplaceAllString(text, "\n\n")
 
 	return strings.TrimSpace(text)
 }
 
-// fixedSizeChunking 固定大小分块
+// fixedSizeChunking fixed-size chunking
 func (c *DocumentChunker) fixedSizeChunking(content string) []*DocumentChunk {
 	var chunks []*DocumentChunk
 	runes := []rune(content)
@@ -222,7 +222,7 @@ func (c *DocumentChunker) fixedSizeChunking(content string) []*DocumentChunk {
 			end = totalLen
 		}
 
-		// 尝试在句子边界处分割
+		// Try to split at sentence boundaries
 		if end < totalLen {
 			for j := end; j > i+c.config.MinChunkSize && j > i; j-- {
 				if c.isSentenceBoundary(runes[j]) {
@@ -241,7 +241,7 @@ func (c *DocumentChunker) fixedSizeChunking(content string) []*DocumentChunk {
 			chunks = append(chunks, chunk)
 		}
 
-		// 计算下一个起始位置（考虑重叠）
+		// Calculate next starting position (considering overlap)
 		nextStart := end - c.config.OverlapSize
 		if nextStart <= i {
 			nextStart = i + 1
@@ -252,17 +252,17 @@ func (c *DocumentChunker) fixedSizeChunking(content string) []*DocumentChunk {
 	return chunks
 }
 
-// semanticChunking 语义分块
+// semanticChunking semantic chunking
 func (c *DocumentChunker) semanticChunking(content string) []*DocumentChunk {
-	// 先按段落分割
+	// First split by paragraphs
 	paragraphs := c.splitIntoParagraphs(content)
 	var chunks []*DocumentChunk
 	currentChunk := ""
 
 	for _, paragraph := range paragraphs {
-		// 如果当前段落太长，需要进一步分割
+		// If current paragraph is too long, need further splitting
 		if utf8.RuneCountInString(paragraph) > c.config.MaxChunkSize {
-			// 保存当前块
+			// Save current chunk
 			if currentChunk != "" {
 				chunk := &DocumentChunk{
 					Text:  strings.TrimSpace(currentChunk),
@@ -271,13 +271,13 @@ func (c *DocumentChunker) semanticChunking(content string) []*DocumentChunk {
 				chunks = append(chunks, chunk)
 				currentChunk = ""
 			}
-			// 对长段落进行句子级分割
+			// Perform sentence-level splitting on long paragraphs
 			sentenceChunks := c.splitLongParagraph(paragraph)
 			chunks = append(chunks, sentenceChunks...)
 			continue
 		}
 
-		// 检查添加当前段落是否会超过最大大小
+		// Check if adding current paragraph will exceed maximum size
 		potentialChunk := currentChunk
 		if potentialChunk != "" {
 			potentialChunk += "\n\n"
@@ -285,7 +285,7 @@ func (c *DocumentChunker) semanticChunking(content string) []*DocumentChunk {
 		potentialChunk += paragraph
 
 		if utf8.RuneCountInString(potentialChunk) > c.config.MaxChunkSize {
-			// 保存当前块
+			// Save current chunk
 			if currentChunk != "" {
 				chunk := &DocumentChunk{
 					Text:  strings.TrimSpace(currentChunk),
@@ -299,7 +299,7 @@ func (c *DocumentChunker) semanticChunking(content string) []*DocumentChunk {
 		}
 	}
 
-	// 保存最后一个块
+	// Save last chunk
 	if currentChunk != "" && utf8.RuneCountInString(currentChunk) >= c.config.MinChunkSize {
 		chunk := &DocumentChunk{
 			Text:  strings.TrimSpace(currentChunk),
@@ -311,7 +311,7 @@ func (c *DocumentChunker) semanticChunking(content string) []*DocumentChunk {
 	return chunks
 }
 
-// sentenceChunking 句子级分块
+// sentenceChunking sentence-level chunking
 func (c *DocumentChunker) sentenceChunking(content string) []*DocumentChunk {
 	sentences := c.splitIntoSentences(content)
 	var chunks []*DocumentChunk
@@ -327,7 +327,7 @@ func (c *DocumentChunker) sentenceChunking(content string) []*DocumentChunk {
 
 		if utf8.RuneCountInString(potentialChunk) > c.config.MaxChunkSize ||
 			sentenceCount >= c.config.SentenceWindow {
-			// 保存当前块
+			// Save current chunk
 			if currentChunk != "" && utf8.RuneCountInString(currentChunk) >= c.config.MinChunkSize {
 				chunk := &DocumentChunk{
 					Text:  strings.TrimSpace(currentChunk),
@@ -343,7 +343,7 @@ func (c *DocumentChunker) sentenceChunking(content string) []*DocumentChunk {
 		}
 	}
 
-	// 保存最后一个块
+	// Save last chunk
 	if currentChunk != "" && utf8.RuneCountInString(currentChunk) >= c.config.MinChunkSize {
 		chunk := &DocumentChunk{
 			Text:  strings.TrimSpace(currentChunk),
@@ -355,39 +355,39 @@ func (c *DocumentChunker) sentenceChunking(content string) []*DocumentChunk {
 	return chunks
 }
 
-// adaptiveChunking 自适应分块
+// adaptiveChunking adaptive chunking
 func (c *DocumentChunker) adaptiveChunking(content string) []*DocumentChunk {
-	// 根据文档长度选择策略
+	// Choose strategy based on document length
 	docLength := utf8.RuneCountInString(content)
 
 	switch {
 	case docLength < 500:
-		// 很短的文档，直接作为一个块
+		// Very short document, use as a single chunk
 		return []*DocumentChunk{{
 			Text:  content,
 			Index: 0,
 		}}
 	case docLength < 2000:
-		// 短文档，使用句子分块
+		// Short document, use sentence chunking
 		return c.sentenceChunking(content)
 	case docLength < 10000:
-		// 中等文档，使用语义分块
+		// Medium document, use semantic chunking
 		return c.semanticChunking(content)
 	default:
-		// 长文档，使用混合策略
+		// Long document, use hybrid strategy
 		return c.hybridChunking(content)
 	}
 }
 
-// hybridChunking 混合分块策略
+// hybridChunking hybrid chunking strategy
 func (c *DocumentChunker) hybridChunking(content string) []*DocumentChunk {
-	// 首先尝试按章节分割
+	// First try to split by sections
 	sections := c.splitIntoSections(content)
 	var chunks []*DocumentChunk
 
 	for _, section := range sections {
 		if utf8.RuneCountInString(section) <= c.config.MaxChunkSize {
-			// 章节大小合适，直接作为一个块
+			// Section size is appropriate, use as a single chunk
 			if utf8.RuneCountInString(section) >= c.config.MinChunkSize {
 				chunk := &DocumentChunk{
 					Text:  strings.TrimSpace(section),
@@ -396,7 +396,7 @@ func (c *DocumentChunker) hybridChunking(content string) []*DocumentChunk {
 				chunks = append(chunks, chunk)
 			}
 		} else {
-			// 章节太大，进行语义分块
+			// Section is too large, perform semantic chunking
 			sectionChunks := c.semanticChunking(section)
 			for _, chunk := range sectionChunks {
 				chunk.Index = len(chunks)
@@ -408,12 +408,12 @@ func (c *DocumentChunker) hybridChunking(content string) []*DocumentChunk {
 	return chunks
 }
 
-// isSentenceBoundary 判断是否为句子边界
+// isSentenceBoundary determines if it's a sentence boundary
 func (c *DocumentChunker) isSentenceBoundary(r rune) bool {
 	return r == '。' || r == '！' || r == '？' || r == '.' || r == '!' || r == '?' || r == '\n'
 }
 
-// splitIntoParagraphs 分割段落
+// splitIntoParagraphs splits into paragraphs
 func (c *DocumentChunker) splitIntoParagraphs(content string) []string {
 	paragraphs := strings.Split(content, "\n\n")
 	var result []string
@@ -426,16 +426,16 @@ func (c *DocumentChunker) splitIntoParagraphs(content string) []string {
 	return result
 }
 
-// splitIntoSentences 分割句子
+// splitIntoSentences splits into sentences
 func (c *DocumentChunker) splitIntoSentences(content string) []string {
-	// 使用GSE进行句子分割
+	// Use GSE for sentence segmentation
 	sentences := c.segmenter.CutAll(content)
 	var result []string
 	currentSentence := ""
 
 	for _, word := range sentences {
 		currentSentence += word
-		// 检查是否为句子结束
+		// Check if it's sentence end
 		if len(word) > 0 {
 			lastRune := []rune(word)[len([]rune(word))-1]
 			if c.isSentenceBoundary(lastRune) {
@@ -447,7 +447,7 @@ func (c *DocumentChunker) splitIntoSentences(content string) []string {
 		}
 	}
 
-	// 添加最后一个句子
+	// Add last sentence
 	if strings.TrimSpace(currentSentence) != "" {
 		result = append(result, strings.TrimSpace(currentSentence))
 	}
@@ -455,14 +455,14 @@ func (c *DocumentChunker) splitIntoSentences(content string) []string {
 	return result
 }
 
-// splitIntoSections 分割章节
+// splitIntoSections splits into sections
 func (c *DocumentChunker) splitIntoSections(content string) []string {
-	// 使用标题模式分割章节
+	// Use header pattern to split sections
 	headerPattern := regexp.MustCompile(`(?m)^#{1,6}\s+.+$|^.+\n[=-]+\s*$`)
 	indices := headerPattern.FindAllStringIndex(content, -1)
 
 	if len(indices) == 0 {
-		// 没有找到标题，按段落分割
+		// No headers found, split by paragraphs
 		return c.splitIntoParagraphs(content)
 	}
 
@@ -471,7 +471,7 @@ func (c *DocumentChunker) splitIntoSections(content string) []string {
 
 	for i, match := range indices {
 		if i > 0 {
-			// 添加前一个章节
+			// Add previous section
 			section := strings.TrimSpace(content[lastEnd:match[0]])
 			if section != "" {
 				sections = append(sections, section)
@@ -480,7 +480,7 @@ func (c *DocumentChunker) splitIntoSections(content string) []string {
 		lastEnd = match[0]
 	}
 
-	// 添加最后一个章节
+	// Add last section
 	if lastEnd < len(content) {
 		section := strings.TrimSpace(content[lastEnd:])
 		if section != "" {
@@ -491,7 +491,7 @@ func (c *DocumentChunker) splitIntoSections(content string) []string {
 	return sections
 }
 
-// splitLongParagraph 分割长段落
+// splitLongParagraph splits long paragraphs
 func (c *DocumentChunker) splitLongParagraph(paragraph string) []*DocumentChunk {
 	sentences := c.splitIntoSentences(paragraph)
 	var chunks []*DocumentChunk
@@ -505,7 +505,7 @@ func (c *DocumentChunker) splitLongParagraph(paragraph string) []*DocumentChunk 
 		potentialChunk += sentence
 
 		if utf8.RuneCountInString(potentialChunk) > c.config.MaxChunkSize {
-			// 保存当前块
+			// Save current chunk
 			if currentChunk != "" && utf8.RuneCountInString(currentChunk) >= c.config.MinChunkSize {
 				chunk := &DocumentChunk{
 					Text:  strings.TrimSpace(currentChunk),
@@ -519,7 +519,7 @@ func (c *DocumentChunker) splitLongParagraph(paragraph string) []*DocumentChunk 
 		}
 	}
 
-	// 保存最后一个块
+	// Save last chunk
 	if currentChunk != "" && utf8.RuneCountInString(currentChunk) >= c.config.MinChunkSize {
 		chunk := &DocumentChunk{
 			Text:  strings.TrimSpace(currentChunk),
@@ -531,9 +531,9 @@ func (c *DocumentChunker) splitLongParagraph(paragraph string) []*DocumentChunk 
 	return chunks
 }
 
-// ChunkMarkdownFile 处理Markdown文件并生成chunks.json
+// ChunkMarkdownFile processes Markdown file and generates chunks.json
 func ChunkMarkdownFile(markdownPath, configPath, outputPath string) error {
-	// 加载配置
+	// Load configuration
 	config, err := LoadChunkingConfig(configPath)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
@@ -544,26 +544,26 @@ func ChunkMarkdownFile(markdownPath, configPath, outputPath string) error {
 		log.Panic().Err(err).Stack().Msg("Getwd() failed")
 	}
 
-	// 创建分块器
+	// Create chunker
 	chunker, err := NewDocumentChunker(config, cwd)
 	if err != nil {
 		return fmt.Errorf("failed to create chunker: %w", err)
 	}
 
-	// 读取Markdown文件
+	// Read Markdown file
 	content, err := os.ReadFile(markdownPath)
 	if err != nil {
 		return fmt.Errorf("failed to read markdown file: %w", err)
 	}
 
-	// 进行分块
+	// Perform chunking
 	fileName := filepath.Base(markdownPath)
 	doc, err := chunker.ChunkDocument(string(content), fileName)
 	if err != nil {
 		return fmt.Errorf("failed to chunk document: %w", err)
 	}
 
-	// 输出JSON
+	// Output JSON
 	jsonData, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal JSON: %w", err)
