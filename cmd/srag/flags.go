@@ -43,6 +43,19 @@ var flagAssistantAPIKey = &cli.StringFlag{
 	Sources: cli.NewValueSourceChain(cli.EnvVar("RAG_ASSISTANT_API_KEY")),
 }
 
+var flagTrace = &cli.BoolFlag{
+	Name:    "trace",
+	Usage:   "Enable OpenAI API call tracing for debugging",
+	Sources: cli.NewValueSourceChain(cli.EnvVar("RAG_TRACE")),
+}
+
+var flagAuditLogDir = &cli.StringFlag{
+	Name:    "audit-log-dir",
+	Usage:   "Directory to store API call audit logs",
+	Value:   "./audit_logs",
+	Sources: cli.NewValueSourceChain(cli.EnvVar("RAG_AUDIT_LOG_DIR")),
+}
+
 func getArgumentQuery(command *cli.Command) (string, error) {
 	query := command.StringArg("query")
 	if query == "" {

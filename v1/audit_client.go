@@ -93,8 +93,37 @@ func (c *AuditChatCompletionsClient) New(ctx context.Context, params openai.Chat
 	response, err := c.completions.New(ctx, params)
 	duration := time.Since(start)
 
-	// Log the call
-	c.auditLogger.LogAPICall(ctx, "chat", c.model, request, response, err, duration, "")
+	// Create a detailed response for audit logging
+	var auditResponse interface{}
+	if response != nil && len(response.Choices) > 0 {
+		// Extract the actual response content
+		auditResponse = map[string]interface{}{
+			"id":      response.ID,
+			"object":  response.Object,
+			"created": response.Created,
+			"model":   response.Model,
+			"choices": []map[string]interface{}{
+				{
+					"index":         response.Choices[0].Index,
+					"finish_reason": response.Choices[0].FinishReason,
+					"message": map[string]interface{}{
+						"role":    response.Choices[0].Message.Role,
+						"content": response.Choices[0].Message.Content,
+					},
+				},
+			},
+			"usage": map[string]interface{}{
+				"prompt_tokens":     response.Usage.PromptTokens,
+				"completion_tokens": response.Usage.CompletionTokens,
+				"total_tokens":      response.Usage.TotalTokens,
+			},
+		}
+	} else {
+		auditResponse = response
+	}
+
+	// Log the call with detailed response
+	c.auditLogger.LogAPICall(ctx, "chat", c.model, request, auditResponse, err, duration, "")
 
 	return response, err
 }
@@ -124,13 +153,13 @@ func sanitizeMessages(messages []openai.ChatCompletionMessageParamUnion) []map[s
 			}
 		}
 
-		// Provide content size estimation
+		// For user messages, sanitize for privacy
 		if nonNilCount > 1 {
-			sanitizedMsg["content"] = fmt.Sprintf("[Chat message: substantial content]")
+			sanitizedMsg["content"] = fmt.Sprintf("[User message: %d characters]", len(msgStr))
 		} else if nonNilCount == 1 {
-			sanitizedMsg["content"] = fmt.Sprintf("[Chat message: minimal content]")
+			sanitizedMsg["content"] = fmt.Sprintf("[User message: %d characters]", len(msgStr))
 		} else {
-			sanitizedMsg["content"] = fmt.Sprintf("[Chat message: empty or placeholder]")
+			sanitizedMsg["content"] = fmt.Sprintf("[User message: empty or placeholder]")
 		}
 
 		sanitized[i] = sanitizedMsg
