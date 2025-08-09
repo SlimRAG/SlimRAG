@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 
 	"github.com/cespare/xxhash"
@@ -250,6 +249,15 @@ func CalculateFileHash(filePath string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
+// GenerateDocumentID generates a unique document ID using xxh64 hash of file path + filename
+func GenerateDocumentID(filePath string) string {
+	h := xxhash.New()
+	h.Write([]byte(filePath))
+	pathHash := hex.EncodeToString(h.Sum(nil))
+	fileName := filepath.Base(filePath)
+	return pathHash + ":" + fileName
+}
+
 // IsFileProcessed checks if a file has been processed and if its hash matches
 func (r *RAG) IsFileProcessed(filePath, currentHash string) (bool, error) {
 	var storedHash string
@@ -307,8 +315,8 @@ func (r *RAG) RemoveFileRecord(filePath string) error {
 	}
 	defer tx.Rollback()
 
-	// Get document ID from file path (remove .md extension)
-	documentID := strings.TrimSuffix(filepath.Base(filePath), ".md")
+	// Get document ID from file path using hash + filename
+	documentID := GenerateDocumentID(filePath)
 
 	// Remove document chunks
 	_, err = tx.Exec("DELETE FROM document_chunks WHERE document_id = ?", documentID)

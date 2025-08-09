@@ -218,7 +218,7 @@ var updateCmd = &cli.Command{
 			}
 
 			// Remove old chunks for this document if it was previously processed
-			documentID := strings.TrimSuffix(fileName, ".md")
+			documentID := rag.GenerateDocumentID(filePath)
 			err = r.RemoveDocumentChunks(documentID)
 			if err != nil {
 				log.Error().Err(err).Str("document_id", documentID).Msg("Failed to remove old chunks")
