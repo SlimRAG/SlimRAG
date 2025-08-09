@@ -109,6 +109,8 @@ var chunkCmd = &cli.Command{
 			if err != nil {
 				return fmt.Errorf("failed to chunk document: %w", err)
 			}
+			doc.FilePath = inputPath
+			doc.Fix()
 
 			// 保存结果
 			data, err := json.MarshalIndent(doc, "", "  ")
