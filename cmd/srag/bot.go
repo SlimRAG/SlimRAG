@@ -206,8 +206,9 @@ func (bm *BotManager) processQuery(ctx context.Context, query string) (string, e
 
 	// Generate response using LLM
 	askParam := &rag.AskParameter{
-		Query: query,
-		Limit: 10,
+		Query:          query,
+		RetrievalLimit: 50,
+		SelectedLimit:  10,
 	}
 
 	response, err := bm.rag.Ask(ctx, askParam)

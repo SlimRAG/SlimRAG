@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/glamour"
+	"github.com/cockroachdb/errors"
 	"github.com/goccy/go-json"
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/openai/openai-go"
@@ -31,8 +32,13 @@ var askCmd = &cli.Command{
 		flagAssistantBaseURL,
 		flagAssistantModel,
 		flagAssistantAPIKey,
-		&cli.IntFlag{Name: "limit", Value: 40},
-		&cli.IntFlag{Name: "top-n", Value: 10},
+		&cli.IntFlag{Name: "retrieval-limit", Value: 100, Usage: "Number of chunks to retrieve from vector search"},
+		&cli.IntFlag{Name: "selected-limit", Value: 10, Usage: "Number of chunks for LLM to select and use for final answer"},
+		&cli.BoolFlag{
+			Name:    "vector-only",
+			Aliases: []string{"vc", "vec"},
+			Usage:   "Only return vector search results without LLM processing",
+		},
 		&cli.IntFlag{Name: "jobs", Value: 4},
 	},
 	Action: func(ctx context.Context, command *cli.Command) error {
@@ -47,8 +53,9 @@ var askCmd = &cli.Command{
 		assistantBaseURL := command.String("assistant-base-url")
 		assistantModel := command.String("assistant-model")
 		assistantAPIKey := command.String("assistant-api-key")
-		limit := command.Int("limit")
-		topN := command.Int("top-n")
+		retrievalLimit := command.Int("retrieval-limit")
+		selectedLimit := command.Int("selected-limit")
+		vectorOnly := command.Bool("vector-only")
 		jobs := command.Int("jobs")
 
 		db, err := rag.OpenDuckDB(dsn)
@@ -85,13 +92,13 @@ var askCmd = &cli.Command{
 					if err != nil {
 						return err
 					}
-					return ask(ctx, &r, item.Query, limit, topN)
+					return ask(ctx, &r, item.Query, retrievalLimit, selectedLimit, vectorOnly)
 				})
 			}
 			return g.Wait()
 		}
 
-		return ask(ctx, &r, query, limit, topN)
+		return ask(ctx, &r, query, retrievalLimit, selectedLimit, vectorOnly)
 	},
 }
 
@@ -99,38 +106,66 @@ type queryItem struct {
 	Query string `json:"query"`
 }
 
-func ask(ctx context.Context, r *rag.RAG, query string, limit int, topN int) error {
-	chunks, err := r.QueryDocumentChunks(ctx, query, limit)
+func ask(ctx context.Context, r *rag.RAG, query string, retrievalLimit int, selectedLimit int, vectorOnly bool) error {
+	// 第一阶段：向量检索并显示检索到的块
+	retrievedChunks, err := r.QueryDocumentChunks(ctx, query, retrievalLimit)
 	if err != nil {
 		return err
 	}
 
-	chunks, err = r.Rerank(ctx, query, chunks, topN)
-	if err != nil {
-		return err
-	}
-
+	fmt.Printf("Retrieved %d chunks from vector search:\n", len(retrievedChunks))
 	tw := table.NewWriter()
 	tw.AppendHeader(table.Row{"Chunk ID", "Document", "File Path"})
-	for _, chunk := range chunks {
+	for _, chunk := range retrievedChunks {
 		tw.AppendRow(table.Row{chunk.ID, chunk.Document, chunk.FilePath})
 	}
 	fmt.Println(tw.Render())
 
-	answer, err := r.Ask(ctx, &rag.AskParameter{Query: query, Limit: limit})
+	// 如果是 vector-only 模式，直接返回
+	if vectorOnly {
+		return nil
+	}
+
+	// 第二阶段：LLM 选择最相关的块
+	selectedChunks, err := r.Rerank(ctx, query, retrievedChunks, selectedLimit)
 	if err != nil {
 		return err
 	}
 
-	fmt.Println("The answer is:")
+	fmt.Printf("\nLLM selected %d most relevant chunks:\n", len(selectedChunks))
+	tw2 := table.NewWriter()
+	tw2.AppendHeader(table.Row{"Chunk ID", "Document", "File Path"})
+	for _, chunk := range selectedChunks {
+		tw2.AppendRow(table.Row{chunk.ID, chunk.Document, chunk.FilePath})
+	}
+	fmt.Println(tw2.Render())
 
-	// Use glamour to render markdown
-	rendered, err := glamour.Render(answer, "dark")
+	// 第三阶段：基于选择的块生成答案
+	fmt.Println("\nThe answer is:")
+
+	prompt := rag.BuildPrompt(query, selectedChunks)
+	c, err := r.AssistantClient.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
+		Model: r.AssistantModel,
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			openai.UserMessage(prompt),
+		},
+	})
 	if err != nil {
-		fmt.Printf("Error rendering markdown: %v\n", err)
-		fmt.Println(answer)
+		return err
+	}
+
+	if len(c.Choices) > 0 {
+		answer := string(c.Choices[0].Message.Content)
+		// Use glamour to render markdown
+		rendered, err := glamour.Render(answer, "dark")
+		if err != nil {
+			fmt.Printf("Error rendering markdown: %v\n", err)
+			fmt.Println(answer)
+			return nil
+		}
+		fmt.Println(rendered)
 		return nil
 	}
-	fmt.Println(rendered)
-	return nil
+
+	return errors.New("no choices returned from chat completion")
 }

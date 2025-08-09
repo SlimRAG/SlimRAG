@@ -373,8 +373,9 @@ func (p *IssueProcessor) generateAnswer(ctx context.Context, issue GitHubIssue) 
 	}
 
 	param := &rag.AskParameter{
-		Query: query,
-		Limit: p.RAGLimit,
+		Query:          query,
+		RetrievalLimit: p.RAGLimit * 2, // 检索更多块供 LLM 选择
+		SelectedLimit:  p.RAGLimit,
 	}
 
 	answer, err := p.RAG.Ask(ctx, param)

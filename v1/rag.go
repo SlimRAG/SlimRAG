@@ -4,9 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/cespare/xxhash"
@@ -218,32 +220,110 @@ func (r *RAG) GetDocumentChunk(id string) (*DocumentChunk, error) {
 	return &chunk, nil
 }
 
-// Rerank simplifies the chunk selection by returning the top N chunks
-// This is a simplified version that doesn't use LLM for reranking
-// but simply filters the most relevant chunks based on the initial retrieval order
-func (r *RAG) Rerank(ctx context.Context, query string, chunks []DocumentChunk, topN int) ([]DocumentChunk, error) {
-	// Simply return the top N chunks from the initial retrieval
-	// The chunks are already ordered by relevance from the vector search
-	if len(chunks) <= topN {
+// Rerank 使用 LLM 来选择与查询最相关的文档块
+func (r *RAG) Rerank(ctx context.Context, query string, chunks []DocumentChunk, selectedLimit int) ([]DocumentChunk, error) {
+	if len(chunks) <= selectedLimit {
 		return chunks, nil
 	}
 
-	log.Info().Int("total_chunks", len(chunks)).Int("selected_chunks", topN).Msg("Filtering top chunks")
-	return chunks[:topN], nil
+	// 构建 LLM 选择提示
+	selectionPrompt := r.buildSelectionPrompt(query, chunks, selectedLimit)
+
+	c, err := r.AssistantClient.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
+		Model: r.AssistantModel,
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			openai.UserMessage(selectionPrompt),
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if len(c.Choices) == 0 {
+		return nil, errors.New("no choices returned from LLM selection")
+	}
+
+	// 解析 LLM 返回的索引选择
+	selectedIndices, err := r.parseSelectedIndices(string(c.Choices[0].Message.Content), len(chunks))
+	if err != nil {
+		return nil, err
+	}
+
+	// 根据选择的索引返回文档块
+	var selectedChunks []DocumentChunk
+	for _, idx := range selectedIndices {
+		if idx < len(chunks) {
+			selectedChunks = append(selectedChunks, chunks[idx])
+		}
+	}
+
+	log.Info().Int("total_chunks", len(chunks)).Int("selected_chunks", len(selectedChunks)).Msg("LLM-based chunk selection completed")
+	return selectedChunks, nil
+}
+
+// buildSelectionPrompt 构建用于 LLM 选择文档块的提示
+func (r *RAG) buildSelectionPrompt(query string, chunks []DocumentChunk, selectedLimit int) string {
+	var b strings.Builder
+	b.WriteString("你是一个智能文档检索助手。请根据用户查询，从下面的文档块中选择最相关的 ")
+	b.WriteString(fmt.Sprintf("%d", selectedLimit))
+	b.WriteString(" 个块。请只返回索引编号，每行一个，按相关性从高到低排序。\n\n")
+	b.WriteString("用户查询：")
+	b.WriteString(query)
+	b.WriteString("\n\n文档块列表：\n\n")
+
+	for i, chunk := range chunks {
+		b.WriteString(fmt.Sprintf("[%d] %s\n\n", i, chunk.Text))
+	}
+
+	b.WriteString(fmt.Sprintf("\n请选择最相关的 %d 个块，只返回索引编号：", selectedLimit))
+	return b.String()
+}
+
+// parseSelectedIndices 解析 LLM 返回的索引选择
+func (r *RAG) parseSelectedIndices(content string, maxIndex int) ([]int, error) {
+	lines := strings.Split(strings.TrimSpace(content), "\n")
+	var indices []int
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		// 提取数字
+		var idx int
+		n, err := fmt.Sscanf(line, "%d", &idx)
+		if err != nil || n != 1 {
+			continue
+		}
+
+		if idx >= 0 && idx < maxIndex {
+			indices = append(indices, idx)
+		}
+	}
+
+	if len(indices) == 0 {
+		return nil, errors.New("no valid indices found in LLM response")
+	}
+
+	return indices, nil
 }
 
 func (r *RAG) Ask(ctx context.Context, p *AskParameter) (string, error) {
-	chunks, err := r.QueryDocumentChunks(ctx, p.Query, p.Limit)
+	// 第一阶段：向量检索大量文档块
+	retrievedChunks, err := r.QueryDocumentChunks(ctx, p.Query, p.RetrievalLimit)
 	if err != nil {
 		return "", err
 	}
 
-	chunks, err = r.Rerank(ctx, p.Query, chunks, p.Limit)
+	// 第二阶段：LLM 选择最相关的文档块
+	selectedChunks, err := r.Rerank(ctx, p.Query, retrievedChunks, p.SelectedLimit)
 	if err != nil {
 		return "", err
 	}
 
-	prompt := buildPrompt(p.Query, chunks)
+	// 第三阶段：基于选择的文档块生成最终答案
+	prompt := BuildPrompt(p.Query, selectedChunks)
 	c, err := r.AssistantClient.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
 		Model: r.AssistantModel,
 		Messages: []openai.ChatCompletionMessageParamUnion{

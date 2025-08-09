@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-func buildPrompt(query string, documents []DocumentChunk) string {
+func BuildPrompt(query string, documents []DocumentChunk) string {
 	var b strings.Builder
 	b.WriteString("根据以下知识，使用中文回答问题：\n\n")
 	for i, doc := range documents {
