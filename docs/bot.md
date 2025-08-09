@@ -14,22 +14,40 @@ SlimRAG supports chat bot integration for Telegram and Slack platforms. Users ca
 
 ### Environment Variables
 
-Set the following environment variables or use command-line flags:
+The bot requires the following environment variables to be set:
 
 ```bash
-# Telegram Bot Configuration
-TELEGRAM_BOT_TOKEN="your_telegram_bot_token"
+# Database Configuration
+# For PostgreSQL:
+DSN="postgres://user:password@localhost:5432/slimrag?sslmode=disable"
+# For DuckDB:
+# DSN="slimrag.db"
 
-# Slack Bot Configuration
-SLACK_BOT_TOKEN="xoxb-your-slack-bot-token"
-SLACK_APP_TOKEN="xapp-your-slack-app-token"
+# AI Models Configuration
+EMBEDDING_BASE_URL="https://api.openai.com/v1"
+EMBEDDING_MODEL="text-embedding-ada-002"
+RERANKER_BASE_URL="https://api.openai.com/v1"
+RERANKER_MODEL="gpt-3.5-turbo"
+ASSISTANT_BASE_URL="https://api.openai.com/v1"
+ASSISTANT_MODEL="gpt-3.5-turbo"
 
-# RAG Configuration (same as other commands)
-DSN="your_database_connection_string"
-EMBEDDING_BASE_URL="your_embedding_api_endpoint"
-EMBEDDING_MODEL="your_embedding_model"
-ASSISTANT_BASE_URL="your_assistant_api_endpoint"
-ASSISTANT_MODEL="your_assistant_model"
+# OpenAI API Key (if using OpenAI models)
+OPENAI_API_KEY="sk-your-openai-api-key-here"
+
+# Bot Tokens
+TELEGRAM_BOT_TOKEN="your-telegram-bot-token"
+SLACK_BOT_TOKEN="your-slack-bot-token"
+SLACK_APP_TOKEN="your-slack-app-token"
+
+# Server Configuration
+SERVER_PORT="5000"
+SERVER_HOST="0.0.0.0"
+
+# Bot Configuration
+MAX_WORKERS="3"
+RAG_LIMIT="10"
+RAG_TOP_N="5"
+LOG_LEVEL="info"
 ```
 
 ### Command Line Usage

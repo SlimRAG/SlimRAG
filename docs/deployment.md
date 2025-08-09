@@ -6,13 +6,16 @@ This document provides detailed instructions for deploying the SlimRAG applicati
 
 Before you begin, ensure you have the following:
 
-- A server running a Linux distribution.
-- Go 1.24 or later installed.
-- PostgreSQL installed and running.
-- The `pgvector` extension for PostgreSQL installed.
-- Access to OpenAI-compatible APIs for embedding, reranking, and language models.
+- A server running a Linux distribution
+- Go 1.24 or later installed
+- **Database**: Choose one of the following:
+  - PostgreSQL with the `pgvector` extension (recommended for production)
+  - DuckDB (for local development or single-user deployments)
+- Access to OpenAI-compatible APIs for embedding, reranking, and language models
 
 ## 2. Database Setup
+
+### Option A: PostgreSQL (Recommended for Production)
 
 1.  **Install `pgvector`:**
 
@@ -34,6 +37,12 @@ Before you begin, ensure you have the following:
     CREATE EXTENSION IF NOT EXISTS vector;
     ```
 
+### Option B: DuckDB (Local Development)
+
+1.  **No additional setup required:**
+
+    DuckDB is embedded and requires no separate installation. The VSS extension for vector search is automatically installed when the application starts.
+
 ## 3. Application Setup
 
 1.  **Clone the repository:**
@@ -53,14 +62,42 @@ Before you begin, ensure you have the following:
 
     Create a `.env` file in the root of the project with the following content, replacing the placeholder values with your actual configuration:
 
+    **For PostgreSQL:**
     ```
-    DSN="postgres://slimrag_user:your-password@localhost:5432/slimrag"
+    # Database Configuration
+    DSN="postgres://slimrag_user:your-password@localhost:5432/slimrag?sslmode=disable"
+    
+    # API Configuration
     EMBEDDING_BASE_URL="your-embedding-api-endpoint"
     EMBEDDING_MODEL="your-embedding-model"
     RERANKER_BASE_URL="your-reranker-api-endpoint"
     RERANKER_MODEL="your-reranker-model"
     ASSISTANT_BASE_URL="your-assistant-api-endpoint"
     ASSISTANT_MODEL="your-assistant-model"
+    
+    # OpenAI API Key (if using OpenAI models)
+    OPENAI_API_KEY="sk-your-openai-api-key-here"
+    
+    # Bot Configuration (optional)
+    TELEGRAM_BOT_TOKEN="your-telegram-bot-token"
+    SLACK_BOT_TOKEN="your-slack-bot-token"
+    SLACK_APP_TOKEN="your-slack-app-token"
+    
+    # Server Configuration
+    SERVER_PORT="5000"
+    SERVER_HOST="0.0.0.0"
+    MAX_WORKERS="3"
+    ```
+    
+    **For DuckDB:**
+    ```
+    # Database Configuration
+    DSN="slimrag.db"
+    
+    # API Configuration (same as above)
+    EMBEDDING_BASE_URL="your-embedding-api-endpoint"
+    EMBEDDING_MODEL="your-embedding-model"
+    # ... rest of the configuration
     ```
 
 ## 4. Running the Application
@@ -114,7 +151,9 @@ Using a process manager like `systemd` is recommended for production environment
 
 ## 5. Populating the Database
 
-Once the application is running, you need to populate the database with your documents.
+Once the application is running, you need to populate the database with your documents. You have several options:
+
+### Option A: Traditional Workflow
 
 1.  **Scan your documents:**
 
@@ -125,7 +164,56 @@ Once the application is running, you need to populate the database with your doc
 2.  **Compute embeddings:**
 
     ```bash
-    ./srag compute
+    ./srag compute --workers 3
     ```
+
+### Option B: All-in-One Update Command
+
+Use the new `update` command to scan, chunk, and compute embeddings in one step:
+
+```bash
+./srag update /path/to/your/documents --strategy adaptive --max-size 1000 --workers 3
+```
+
+### Option C: Advanced Chunking
+
+For fine-grained control over document chunking:
+
+```bash
+# First, chunk individual files
+./srag chunk document.md --output document.chunks.json --strategy semantic
+
+# Then use the traditional workflow
+./srag scan /path/to/your/documents
+./srag compute
+```
+
+## 6. Docker Deployment
+
+SlimRAG provides two Docker Compose configurations:
+
+### PostgreSQL (Production)
+
+For production deployment with PostgreSQL:
+
+```bash
+# Start with PostgreSQL
+docker-compose -f docker-compose.bot.yml up -d
+```
+
+### DuckDB (Development)
+
+For local development with DuckDB:
+
+```bash
+# Start with DuckDB
+docker-compose -f docker-compose.duckdb.yml up -d
+```
+
+The DuckDB setup is ideal for:
+- Local development and testing
+- Single-user scenarios
+- Quick prototyping
+- Environments where you don't want to manage a separate database server
 
 Your SlimRAG instance is now deployed and ready to answer questions.

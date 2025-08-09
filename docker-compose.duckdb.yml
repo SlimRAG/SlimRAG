@@ -1,34 +1,13 @@
 version: '3.8'
 
 services:
-  postgres:
-    image: pgvector/pgvector:pg16
-    environment:
-      POSTGRES_DB: slimrag
-      POSTGRES_USER: slimrag
-      POSTGRES_PASSWORD: slimrag_password
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./configs/init.sql:/docker-entrypoint-initdb.d/init.sql
-    ports:
-      - "5432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U slimrag -d slimrag"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
-  slimrag-bot:
+  slimrag-bot-duckdb:
     build:
       context: .
       dockerfile: Dockerfile.bot
     environment:
-      # Database Configuration
-      # For PostgreSQL (production)
-      DSN: "postgres://slimrag:slimrag_password@postgres:5432/slimrag?sslmode=disable"
-      # For DuckDB (local development) - uncomment and comment PostgreSQL DSN above
-      # DSN: "duckdb://./slimrag.db"
+      # Database Configuration - DuckDB
+      DSN: "duckdb://./data/slimrag.db"
       
       # AI Model Configuration
       # Embedding Model
@@ -67,16 +46,16 @@ services:
       
       # Logging
       LOG_LEVEL: "${LOG_LEVEL:-info}"
-    depends_on:
-      postgres:
-        condition: service_healthy
     restart: unless-stopped
     volumes:
       - ./logs:/app/logs
+      - ./data:/app/data  # Mount data directory for DuckDB
+      - ./configs:/app/configs  # Mount configs for chunker configuration
     # Uncomment if you need to expose the health check port
     # ports:
     #   - "8080:8080"
 
 volumes:
-  postgres_data:
+  # No postgres_data volume needed for DuckDB setup
+  data:
     driver: local

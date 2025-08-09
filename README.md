@@ -15,7 +15,7 @@ SlimRAG is a minimalist Retrieval-Augmented Generation (RAG) system. It provides
 ### Prerequisites
 
 - Go 1.24 or later
-- PostgreSQL with the [pgvector](https://github.com/pgvector/pgvector) extension installed.
+- **Database**: Either PostgreSQL with the [pgvector](https://github.com/pgvector/pgvector) extension installed, or DuckDB for local development
 - Access to OpenAI-compatible APIs for embedding and language models.
 
 ### Installation
@@ -44,13 +44,20 @@ SlimRAG is a minimalist Retrieval-Augmented Generation (RAG) system. It provides
 SlimRAG is configured using command-line flags or a `.env` file. Create a `.env` file in the root of the project and add the following variables:
 
 ```
-DSN="postgres://user:password@host:port/database"
+# Database Configuration (choose one)
+DSN="postgres://user:password@host:port/database"  # PostgreSQL
+# DSN="slimrag.db"  # DuckDB for local development
+
+# API Configuration
 EMBEDDING_BASE_URL="your-embedding-api-endpoint"
 EMBEDDING_MODEL="your-embedding-model"
 RERANKER_BASE_URL="your-reranker-api-endpoint"
 RERANKER_MODEL="your-reranker-model"
 ASSISTANT_BASE_URL="your-assistant-api-endpoint"
 ASSISTANT_MODEL="your-assistant-model"
+
+# OpenAI API Key (if using OpenAI models)
+OPENAI_API_KEY="sk-your-openai-api-key-here"
 ```
 
 ## Usage
@@ -91,6 +98,32 @@ This command will:
 3.  Use a reranker to improve the relevance of the search results.
 4.  Pass the relevant document chunks and your query to an LLM to generate an answer.
 
+### `chunk`
+
+Chunk markdown files using the built-in Go native chunker.
+
+```bash
+./srag chunk <input-file> --output <output.json> --strategy adaptive --max-size 1000 --min-size 100 --overlap 50 --language auto
+```
+
+This command provides advanced document chunking with multiple strategies:
+- **fixed**: Fixed-size chunks
+- **semantic**: Semantic-aware chunking
+- **sentence**: Sentence-based chunking
+- **adaptive**: Adaptive chunking (default)
+
+Supports both Chinese and English text processing.
+
+### `update`
+
+Update documents in the database with advanced chunking and processing.
+
+```bash
+./srag update <path-to-documents> --strategy adaptive --max-size 1000 --workers 3 --force
+```
+
+This command combines document scanning, chunking, and embedding computation in one step.
+
 ### `serve`
 
 Start a web server that provides an API for interacting with the RAG system.
@@ -124,24 +157,56 @@ The bot command includes:
 
 For detailed bot setup instructions, see [docs/bot.md](docs/bot.md).
 
+## Quick Start with Docker
+
+```bash
+# Clone the repository
+git clone https://github.com/fanyang89/SlimRAG.git
+cd SlimRAG
+
+# Option 1: Start with PostgreSQL (production)
+docker-compose -f docker-compose.bot.yml up -d
+
+# Option 2: Start with DuckDB (development)
+docker-compose -f docker-compose.duckdb.yml up -d
+```
+
 ## Deployment
 
-To deploy SlimRAG, you will need a server with Go and PostgreSQL installed.
+SlimRAG supports two database backends for flexible deployment options.
 
-1.  **Set up the database:**
-    - Install PostgreSQL and the `pgvector` extension.
-    - Create a database and user for SlimRAG.
-    - Run the database migrations to create the necessary tables.
+### Database Options
 
-2.  **Build the application:**
-    - Clone the repository on your server.
-    - Build the `srag` binary as described in the Installation section.
+#### PostgreSQL (Recommended for Production)
 
-3.  **Configure the environment:**
-    - Create a `.env` file with the production database connection details and API endpoints.
+For production deployments, use PostgreSQL with pgvector:
 
-4.  **Run the application:**
-    - You can run the `srag serve` command directly or use a process manager like `systemd` to run it as a service.
+1.  **Set up PostgreSQL:**
+    - Install PostgreSQL and the `pgvector` extension
+    - Create a database and user for SlimRAG
+    - Enable the vector extension
+
+#### DuckDB (Local Development)
+
+For local development or single-user deployments:
+
+1.  **Use DuckDB:**
+    - No additional setup required
+    - Set `DSN="slimrag.db"` in your `.env` file
+    - Automatic VSS extension installation
+
+### Deployment Steps
+
+1.  **Build the application:**
+    - Clone the repository on your server
+    - Build the `srag` binary as described in the Installation section
+
+2.  **Configure the environment:**
+    - Create a `.env` file with your database connection details and API endpoints
+    - Choose between PostgreSQL or DuckDB based on your needs
+
+3.  **Run the application:**
+    - You can run the `srag serve` command directly or use a process manager like `systemd` to run it as a service
 
 ### Example `systemd` service file:
 
