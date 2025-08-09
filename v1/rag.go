@@ -171,9 +171,9 @@ func (r *RAG) QueryDocumentChunks(ctx context.Context, query string, limit int) 
 	}
 	queryEmbedding := toFloat32Slice(rsp.Data[0].Embedding)
 
-	rows, err := r.DB.QueryContext(ctx, `SELECT id, document_id, file_path, text, embedding FROM document_chunks
-		ORDER BY array_distance(embedding, ?::FLOAT[1024]) LIMIT ?;
-	`, queryEmbedding, limit)
+	rows, err := r.DB.QueryContext(ctx, fmt.Sprintf(`SELECT id, document_id, file_path, text, embedding FROM document_chunks
+		ORDER BY array_distance(embedding, ?::FLOAT[%d]) LIMIT ?;
+	`, r.EmbeddingDimensions), queryEmbedding, limit)
 	if err != nil {
 		return nil, err
 	}

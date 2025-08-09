@@ -85,7 +85,7 @@ var updateCmd = &cli.Command{
 		dsn := command.String("dsn")
 		baseURL := command.String("embedding-base-url")
 		embeddingModel := command.String("embedding-model")
-		embeddingDimensions := command.Int64("embedding-dimension")
+		embeddingDimensions := int64(command.Int("embedding-dimension"))
 		configPath := command.String("config")
 		strategy := command.String("strategy")
 		maxSize := command.Int("max-size")
@@ -101,6 +101,26 @@ var updateCmd = &cli.Command{
 			return err
 		}
 		defer db.Close()
+
+		// Validate or set embedding dimension
+		storedDim, err := rag.GetStoredEmbeddingDimension(db)
+		if err != nil {
+			return fmt.Errorf("failed to get stored embedding dimension: %w", err)
+		}
+
+		if storedDim == 0 {
+			// First time setup - set the dimension
+			log.Info().Int64("dimension", embeddingDimensions).Msg("Setting initial embedding dimension")
+			err = rag.SetEmbeddingDimension(db, embeddingDimensions)
+			if err != nil {
+				return fmt.Errorf("failed to set embedding dimension: %w", err)
+			}
+			log.Info().Int64("dimension", embeddingDimensions).Msg("Successfully set initial embedding dimension")
+		} else if storedDim != embeddingDimensions {
+			// Dimension mismatch
+			log.Error().Int64("stored", storedDim).Int64("provided", embeddingDimensions).Msg("Embedding dimension mismatch")
+			return fmt.Errorf("embedding dimension mismatch: stored %d, provided %d", storedDim, embeddingDimensions)
+		}
 
 		// Create RAG instance
 		embeddingClient := openai.NewClient(option.WithBaseURL(baseURL))

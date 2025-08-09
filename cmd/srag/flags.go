@@ -23,9 +23,10 @@ var flagEmbeddingModel = &cli.StringFlag{
 	Sources: cli.NewValueSourceChain(cli.EnvVar("RAG_EMBEDDING_MODEL")),
 }
 
-var flagEmbeddingDimension = &cli.StringFlag{
+var flagEmbeddingDimension = &cli.IntFlag{
 	Name:    "embedding-dimension",
 	Sources: cli.NewValueSourceChain(cli.EnvVar("RAG_EMBEDDING_DIMENSION")),
+	Value:   1024,
 }
 
 var flagAssistantBaseURL = &cli.StringFlag{

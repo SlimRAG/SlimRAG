@@ -11,10 +11,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// generateMockEmbedding generates a mock 384-dimensional embedding vector
+// generateMockEmbedding generates a mock 1024-dimensional embedding vector
 func generateMockEmbedding(seed int) []float32 {
 	r := rand.New(rand.NewSource(int64(seed)))
-	embedding := make([]float32, 384)
+	embedding := make([]float32, 1024)
 	for i := range embedding {
 		embedding[i] = r.Float32()*2 - 1 // Random values between -1 and 1
 	}
@@ -61,7 +61,11 @@ func TestDuckDBEmbeddingStorageAndRetrieval(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close()
 
-	// Test data with mock embeddings (384-dimensional)
+	// Set embedding dimension for tests
+	err = SetEmbeddingDimension(db, 1024)
+	require.NoError(t, err)
+
+	// Test data with mock embeddings (1024-dimensional)
 	testDocuments := []struct {
 		id        string
 		document  string
@@ -128,7 +132,7 @@ func TestDuckDBEmbeddingStorageAndRetrieval(t *testing.T) {
 			embedding, err := convertToFloat32Slice(embeddingRaw)
 			require.NoError(t, err)
 			assert.NotEmpty(t, embedding)
-			assert.Equal(t, 384, len(embedding)) // Ensure embedding has expected dimension
+			assert.Equal(t, 1024, len(embedding)) // Ensure embedding has expected dimension
 			embeddingCount++
 		}
 		assert.Equal(t, len(testDocuments), embeddingCount)
@@ -153,7 +157,7 @@ func TestDuckDBEmbeddingStorageAndRetrieval(t *testing.T) {
 		// Use DuckDB's array_cosine_similarity function for vector search
 		// Convert queryEmbedding to the correct array format for DuckDB
 		rows, err := db.QueryContext(ctx, `
-			SELECT id, document_id, text, array_cosine_similarity(embedding, ?::FLOAT[384]) as similarity
+			SELECT id, document_id, text, array_cosine_similarity(embedding, ?::FLOAT[1024]) as similarity
 			FROM document_chunks 
 			WHERE embedding IS NOT NULL
 			ORDER BY similarity DESC
@@ -305,6 +309,10 @@ func TestDuckDBEmbeddingPerformance(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close()
 
+	// Set embedding dimension for tests
+	err = SetEmbeddingDimension(db, 1024)
+	require.NoError(t, err)
+
 	// Insert large amount of test data with mock embeddings
 	numChunks := 100
 	for i := 0; i < numChunks; i++ {
@@ -331,7 +339,7 @@ func TestDuckDBEmbeddingPerformance(t *testing.T) {
 	// Test vector search performance
 	queryEmbedding := generateMockEmbedding(999) // Use a specific seed for query
 	rows, err := db.QueryContext(ctx, `
-		SELECT id, array_cosine_similarity(embedding, ?::FLOAT[384]) as similarity
+		SELECT id, array_cosine_similarity(embedding, ?::FLOAT[1024]) as similarity
 		FROM document_chunks 
 		WHERE document_id = 'perf_test_doc' AND embedding IS NOT NULL
 		ORDER BY similarity DESC
@@ -361,6 +369,10 @@ func TestDuckDBVSSExtension(t *testing.T) {
 	db, err := OpenDuckDB(":memory:")
 	require.NoError(t, err)
 	defer db.Close()
+
+	// Set embedding dimension for tests
+	err = SetEmbeddingDimension(db, 1024)
+	require.NoError(t, err)
 
 	// Test if VSS extension is loaded correctly
 	rows, err := db.Query("SELECT extension_name FROM duckdb_extensions() WHERE extension_name = 'vss'")
