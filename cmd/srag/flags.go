@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"strings"
 
 	"github.com/cockroachdb/errors"
@@ -50,7 +51,16 @@ func getArgumentQuery(command *cli.Command) (string, error) {
 		_ = cli.ShowSubcommandHelp(command)
 		return "", errors.New("query is required")
 	}
-	return query, nil
+	_, err := os.Stat(query)
+	if err != nil {
+		return query, nil
+	}
+	var queryBuf []byte
+	queryBuf, err = os.ReadFile(query)
+	if err != nil {
+		return query, nil
+	}
+	return string(queryBuf), nil
 }
 
 func getArgumentPath(command *cli.Command) (string, error) {
