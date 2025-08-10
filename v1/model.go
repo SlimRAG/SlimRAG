@@ -39,8 +39,9 @@ type Document struct {
 }
 
 type AskParameter struct {
-	Query          string `json:"query"`
-	RetrievalLimit int    `json:"retrieval_limit"` // Number of vector retrievals, e.g., 100
-	SelectedLimit  int    `json:"selected_limit"`  // Number of LLM selections, e.g., 10
-	SystemPrompt   string `json:"system_prompt"`   // Custom system prompt
+	Query          string          `json:"query"`
+	SelectedChunks []DocumentChunk `json:"selected_chunks"`
+	RetrievalLimit int             `json:"retrieval_limit"` // Number of vector retrievals, e.g., 100
+	SelectedLimit  int             `json:"selected_limit"`  // Number of LLM selections, e.g., 10
+	SystemPrompt   string          `json:"system_prompt"`   // Custom system prompt
 }

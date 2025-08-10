@@ -177,6 +177,7 @@ func ask(ctx context.Context, r *rag.RAG, query string, retrievalLimit int, sele
 	// Use the RAG's Ask method which handles the client interface properly
 	answer, err := r.Ask(ctx, &rag.AskParameter{
 		Query:          query,
+		SelectedChunks: selectedChunks,
 		RetrievalLimit: retrievalLimit,
 		SelectedLimit:  selectedLimit,
 		SystemPrompt:   systemPrompt,

@@ -267,16 +267,21 @@ func (r *RAG) Rerank(ctx context.Context, query string, chunks []DocumentChunk, 
 		}
 	}
 
-	log.Info().Int("total_chunks", len(chunks)).Int("selected_chunks", len(selectedChunks)).Msg("LLM-based chunk selection completed")
+	log.Info().Int("total_chunks", len(chunks)).
+		Int("selected_chunks", len(selectedChunks)).
+		Msg("LLM-based chunk selection completed")
 	return selectedChunks, nil
 }
 
 // buildSelectionPrompt builds the prompt for LLM to select document chunks
 func (r *RAG) buildSelectionPrompt(query string, chunks []DocumentChunk, selectedLimit int) string {
 	var b strings.Builder
-	b.WriteString("You are an intelligent document retrieval assistant. Please select the most relevant ")
-	b.WriteString(fmt.Sprintf("%d", selectedLimit))
-	b.WriteString(" chunks from the following document blocks. Please only return index numbers, one per line, sorted by relevance from highest to lowest.\n\n")
+	b.WriteString(fmt.Sprintf("You are an intelligent document retrieval assistant. "+
+		"Please select the most relevant %d chunks from the following document blocks. "+
+		"When selecting a chunk, consider the language: e.g., queries in Chinese should prioritize Chinese documents. "+
+		"Please only return index numbers, one per line, sorted by relevance from highest to lowest.\n\n",
+		selectedLimit),
+	)
 	b.WriteString("User query: ")
 	b.WriteString(query)
 	b.WriteString("\n\nDocument block list:\n\n")
@@ -285,7 +290,10 @@ func (r *RAG) buildSelectionPrompt(query string, chunks []DocumentChunk, selecte
 		b.WriteString(fmt.Sprintf("[%d] %s\n\n", i, chunk.Text))
 	}
 
-	b.WriteString(fmt.Sprintf("\nPlease select the most relevant %d chunks, return only index numbers: ", selectedLimit))
+	b.WriteString("\n\n")
+	b.WriteString(fmt.Sprintf(
+		"Please select the most relevant %d chunks, return only index numbers: ", selectedLimit))
+
 	return b.String()
 }
 
@@ -320,24 +328,11 @@ func (r *RAG) parseSelectedIndices(content string, maxIndex int) ([]int, error) 
 }
 
 func (r *RAG) Ask(ctx context.Context, p *AskParameter) (string, error) {
-	// Phase 1: Vector retrieval of large number of document chunks
-	retrievedChunks, err := r.QueryDocumentChunks(ctx, p.Query, p.RetrievalLimit)
-	if err != nil {
-		return "", err
-	}
-
-	// Phase 2: LLM selects the most relevant document chunks
-	selectedChunks, err := r.Rerank(ctx, p.Query, retrievedChunks, p.SelectedLimit)
-	if err != nil {
-		return "", err
-	}
-
-	// Phase 3: Generate final answer based on selected document chunks
 	var prompt string
 	if p.SystemPrompt != "" {
-		prompt = BuildPromptWithSystem(p.Query, selectedChunks, p.SystemPrompt)
+		prompt = BuildPromptWithSystem(p.Query, p.SelectedChunks, p.SystemPrompt)
 	} else {
-		prompt = BuildPrompt(p.Query, selectedChunks)
+		prompt = BuildPrompt(p.Query, p.SelectedChunks)
 	}
 
 	chatClient := ToChatClient(r.AssistantClient)
