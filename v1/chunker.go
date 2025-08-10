@@ -154,14 +154,15 @@ func (c *DocumentChunker) ChunkDocument(content string, fileName string) (*Docum
 }
 
 // GetDocumentChunks chunks a document, using file path to generate document_id
-func (c *DocumentChunker) GetDocumentChunks(filePath string) (*Document, error) {
+func (c *DocumentChunker) GetDocumentChunks(filePath string) (Document, error) {
 	buf, err := os.ReadFile(filePath)
 	if err != nil {
-		return nil, err
+		return Document{}, err
 	}
 
 	content := string(buf)
 	documentID := CalculateStringHash(content)
+
 	content = c.preprocessText(content)
 
 	var chunks []*DocumentChunk
@@ -190,13 +191,12 @@ func (c *DocumentChunker) GetDocumentChunks(filePath string) (*Document, error) 
 		chunk.ID = CalculateStringHash(chunk.Text)
 	}
 
-	doc := &Document{
+	return Document{
 		FileName:   filepath.Base(filePath),
 		FilePath:   relPath,
 		DocumentID: documentID,
 		Chunks:     chunks,
-	}
-	return doc, nil
+	}, nil
 }
 
 // preprocessText preprocesses text
