@@ -105,7 +105,7 @@ var updateCmd = &cli.Command{
 		}
 
 		// Find files to process
-		var toProcessFiles []string
+		var filePathListForNow []string
 		err = filepath.Walk(path, func(filePath string, info os.FileInfo, err error) error {
 			if err != nil {
 				return err
@@ -115,23 +115,23 @@ var updateCmd = &cli.Command{
 			}
 
 			if fileGlob.Match(info.Name()) {
-				toProcessFiles = append(toProcessFiles, filePath)
+				filePathListForNow = append(filePathListForNow, filePath)
 			}
 			return nil
 		})
 		if err != nil {
 			return fmt.Errorf("failed to scan directory: %w", err)
 		}
-		log.Info().Int("total_files", len(toProcessFiles)).Msg("Found markdown files")
+		log.Info().Int("total_files", len(filePathListForNow)).Msg("Found markdown files")
 
 		// find files to process
-		filesToProcess, err := r.FindFilesToProcess(toProcessFiles, force)
+		filesToProcess, err := r.FindFilesToProcess(filePathListForNow, force)
 		if err != nil {
 			return err
 		}
 
 		// Process files
-		bar := progressbar.Default(int64(len(toProcessFiles)))
+		bar := progressbar.Default(int64(len(filePathListForNow)))
 		for _, fileInfo := range filesToProcess {
 			filePath := fileInfo.FilePath
 

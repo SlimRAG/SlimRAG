@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/cespare/xxhash"
 	"github.com/minio/minio-go/v7"
@@ -478,9 +479,10 @@ func (r *RAG) FindFilesToProcess(filePathListForNow []string, force bool) ([]Fil
 			}
 
 			infos = append(infos, FileInfo{
-				FilePath: filePath,
-				FileName: filepath.Base(filePath),
-				FileHash: h,
+				FilePath:    filePath,
+				FileName:    filepath.Base(filePath),
+				FileHash:    h,
+				ProcessedAt: time.Now(),
 			})
 		}
 		return infos, nil
@@ -497,6 +499,7 @@ func (r *RAG) FindFilesToProcess(filePathListForNow []string, force bool) ([]Fil
 	}
 	defer func() { _ = rows.Close() }()
 
+	haveRows := false
 	toDeleteFilePathList := make([]string, 0)
 
 	for rows.Next() {
@@ -505,6 +508,7 @@ func (r *RAG) FindFilesToProcess(filePathListForNow []string, force bool) ([]Fil
 		if err != nil {
 			return nil, err
 		}
+		haveRows = true
 
 		processed := false
 		_, processed = filesMap[fileInfo.FilePath]
@@ -528,6 +532,10 @@ func (r *RAG) FindFilesToProcess(filePathListForNow []string, force bool) ([]Fil
 			// file changed
 			infos = append(infos, fileInfo)
 		}
+	}
+
+	if !haveRows {
+		return r.FindFilesToProcess(filePathListForNow, true)
 	}
 
 	for _, filePath := range toDeleteFilePathList {

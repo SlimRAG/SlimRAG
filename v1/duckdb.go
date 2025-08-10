@@ -72,7 +72,7 @@ func MigrateDuckDB(db *sql.DB, defaultDimension int64) error {
 		return errors.Wrap(err, "Failed to create hnsw_idx index")
 	}
 
-	_, err = db.Exec(`INSERT INTO meta (key, value) VALUES ('embedding_dimension', ?)`, storedDimension)
+	_, err = db.Exec(`INSERT INTO meta (key, value) VALUES ('embedding_dimension', ?) ON CONFLICT DO NOTHING`, storedDimension)
 	if err != nil {
 		return errors.Wrap(err, "Failed to insert metadata")
 	}
