@@ -17,7 +17,7 @@ SlimRAG is a minimalist Retrieval-Augmented Generation (RAG) system. It provides
 ### Prerequisites
 
 - Go 1.24 or later
-- **Database**: DuckDB for local development (PostgreSQL support was removed)
+- **Database**: DuckDB
 - Access to OpenAI-compatible APIs for embedding and language models
 
 ### Installation
