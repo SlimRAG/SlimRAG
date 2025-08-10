@@ -161,6 +161,7 @@ func (c *DocumentChunker) GetDocumentChunks(filePath string) (*Document, error) 
 	}
 
 	content := string(buf)
+	documentID := CalculateStringHash(content)
 	content = c.preprocessText(content)
 
 	var chunks []*DocumentChunk
@@ -184,7 +185,6 @@ func (c *DocumentChunker) GetDocumentChunks(filePath string) (*Document, error) 
 		relPath = filePath
 	}
 
-	documentID := CalculateStringHash(content)
 	for _, chunk := range chunks {
 		chunk.DocumentID = documentID
 		chunk.ID = CalculateStringHash(chunk.Text)

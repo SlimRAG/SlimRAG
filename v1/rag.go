@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -44,20 +43,23 @@ func (r *RAG) UpsertDocumentChunks(document *Document) error {
 
 	stmt, err := tx.Prepare(`
 		INSERT INTO document_chunks (id, document_id, text)
-		VALUES (?, ?, ?)
-		ON CONFLICT (id) DO UPDATE SET
-			text = EXCLUDED.text,
-			document_id = EXCLUDED.document_id`)
+		VALUES (?, ?, ?)`)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = stmt.Close() }()
 
 	for _, chunk := range document.Chunks {
-		_, err = stmt.Exec(chunk.ID, document.DocumentID, chunk.Text)
+		log.Info().Str("chunk_id", chunk.ID).
+			Str("document_id", chunk.DocumentID).
+			Msg("Upserting document chunk")
+		_, err = stmt.Exec(chunk.ID, chunk.DocumentID, chunk.Text)
 		if err != nil {
 			return err
 		}
+		log.Info().Str("chunk_id", chunk.ID).
+			Str("document_id", chunk.DocumentID).
+			Msg("Upserting document chunk, done")
 	}
 
 	return tx.Commit()
@@ -356,45 +358,24 @@ func (r *RAG) Ask(ctx context.Context, p *AskParameter) (string, error) {
 		return "", err
 	}
 	if len(c.Choices) > 0 {
-		return string(c.Choices[0].Message.Content), nil
+		return c.Choices[0].Message.Content, nil
 	}
 	return "", errors.New("no choices returned from chat completion")
-}
-
-// CalculateFileHash calculates xxh64 hash of a file
-func CalculateFileHash(filePath string) (string, error) {
-	file, err := os.Open(filePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return "", nil
-		}
-		return "", err
-	}
-	defer file.Close()
-
-	h := xxhash.New()
-	_, err = io.Copy(h, file)
-	if err != nil {
-		return "", err
-	}
-
-	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // CalculateStringHash calculates xxh64 hash of a string
 func CalculateStringHash(content string) string {
 	h := xxhash.New()
-	_ = h.Sum([]byte(content))
+	_, _ = h.Write([]byte(content))
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// GenerateDocumentID generates a unique document ID using xxh64 hash of file path + filename
-func GenerateDocumentID(filePath string) string {
-	h := xxhash.New()
-	h.Write([]byte(filePath))
-	pathHash := hex.EncodeToString(h.Sum(nil))
-	fileName := filepath.Base(filePath)
-	return pathHash + ":" + fileName
+func CalculateFileHash(path string) (string, error) {
+	buf, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("failed to read file %s: %w", path, err)
+	}
+	return CalculateStringHash(string(buf)), nil
 }
 
 func (r *RAG) GetProcessedFileHash(filePath string) (string, error) {
@@ -544,30 +525,4 @@ func (r *RAG) FindFilesToProcess(filePathListForNow []string, force bool) ([]Fil
 	}
 
 	return infos, nil
-}
-
-// RemoveFileRecord removes a file record and its associated document chunks
-func (r *RAG) RemoveFileRecord(filePath string) error {
-	tx, err := r.DB.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	// Get document ID from file path using hash + filename
-	documentID := GenerateDocumentID(filePath)
-
-	// Remove document chunks
-	_, err = tx.Exec("DELETE FROM document_chunks WHERE document_id = ?", documentID)
-	if err != nil {
-		return err
-	}
-
-	// Remove file record
-	_, err = tx.Exec("DELETE FROM processed_files WHERE file_path = ?", filePath)
-	if err != nil {
-		return err
-	}
-
-	return tx.Commit()
 }
