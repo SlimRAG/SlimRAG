@@ -60,7 +60,7 @@ var updateCmd = &cli.Command{
 		dsn := command.String("dsn")
 		baseURL := command.String("embedding-base-url")
 		embeddingModel := command.String("embedding-model")
-		embeddingDimensions := int64(command.Int("embedding-dimension"))
+		embeddingDimension := int64(command.Int("embedding-dimension"))
 		chunkerConfigPath := command.String("chunker-config")
 		workers := command.Int("workers")
 		force := command.Bool("force")
@@ -73,14 +73,14 @@ var updateCmd = &cli.Command{
 		fileGlob := glob.MustCompile(globStr)
 
 		// Open database
-		db, err := rag.OpenDuckDB(dsn)
+		db, err := rag.OpenDuckDB(dsn, embeddingDimension)
 		if err != nil {
 			return err
 		}
 		defer func() { _ = db.Close() }()
 
 		// Validate or set embedding dimension
-		embeddingDimensions = rag.GetStoredEmbeddingDimension(db, embeddingDimensions)
+		embeddingDimension = rag.GetStoredEmbeddingDimension(db, embeddingDimension)
 
 		// Create RAG instance
 		embeddingClient := openai.NewClient(option.WithBaseURL(baseURL))
@@ -88,7 +88,7 @@ var updateCmd = &cli.Command{
 			DB:                  db,
 			EmbeddingClient:     &embeddingClient,
 			EmbeddingModel:      embeddingModel,
-			EmbeddingDimensions: embeddingDimensions,
+			EmbeddingDimensions: embeddingDimension,
 		}
 
 		// Create chunking config

@@ -300,6 +300,7 @@ var botCmd = &cli.Command{
 		dsn := command.String("dsn")
 		embeddingBaseURL := command.String("embedding-base-url")
 		embeddingModel := command.String("embedding-model")
+		embeddingDimension := command.Int64("embedding-dimension")
 		assistantBaseURL := command.String("assistant-base-url")
 		assistantModel := command.String("assistant-model")
 		telegramToken := command.String("telegram-token")
@@ -311,7 +312,7 @@ var botCmd = &cli.Command{
 			return fmt.Errorf("at least one bot token (telegram or slack) must be provided")
 		}
 
-		db, err := rag.OpenDuckDB(dsn)
+		db, err := rag.OpenDuckDB(dsn, embeddingDimension)
 		if err != nil {
 			return err
 		}

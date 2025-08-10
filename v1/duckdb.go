@@ -10,7 +10,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-func OpenDuckDB(dsn string) (*sql.DB, error) {
+func OpenDuckDB(dsn string, defaultDimension int64) (*sql.DB, error) {
 	if len(dsn) == 0 {
 		dsn = ":memory:"
 	}
@@ -21,14 +21,14 @@ func OpenDuckDB(dsn string) (*sql.DB, error) {
 	}
 
 	db := sql.OpenDB(connector)
-	err = migrateDuckDB(db, dsn)
+	err = MigrateDuckDB(db, defaultDimension)
 	if err != nil {
 		return nil, err
 	}
 	return db, nil
 }
 
-func migrateDuckDB(db *sql.DB, dsn string) error {
+func MigrateDuckDB(db *sql.DB, defaultDimension int64) error {
 	// https://duckdb.org/docs/stable/core_extensions/vss.html#limitations
 	_, err := db.Exec(`INSTALL vss; LOAD vss; SET hnsw_enable_experimental_persistence = true;`)
 	if err != nil {
@@ -49,17 +49,20 @@ func migrateDuckDB(db *sql.DB, dsn string) error {
 	// Check if embedding dimension is already set
 	var storedDimension string
 	err = db.QueryRow("SELECT value FROM meta WHERE key = 'embedding_dimension'").Scan(&storedDimension)
-	if err != nil && err != sql.ErrNoRows {
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return errors.Wrap(err, "Failed to query embedding dimension")
 	}
+	if storedDimension == "" {
+		storedDimension = fmt.Sprintf("%d", defaultDimension)
+	}
 
-	_, err = db.Exec(fmt.Sprintf(`
+	createTableDocumentChunks := fmt.Sprintf(`
 			CREATE TABLE IF NOT EXISTS document_chunks (
 				id VARCHAR PRIMARY KEY,
 				document_id VARCHAR,
 				text VARCHAR,
-				embedding FLOAT[%S]);`,
-		storedDimension))
+				embedding FLOAT[%s]);`, storedDimension)
+	_, err = db.Exec(createTableDocumentChunks)
 	if err != nil {
 		return errors.Wrap(err, "Failed to create document_chunks table")
 	}
@@ -67,6 +70,11 @@ func migrateDuckDB(db *sql.DB, dsn string) error {
 	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS hnsw_idx ON document_chunks USING HNSW (embedding);`)
 	if err != nil {
 		return errors.Wrap(err, "Failed to create hnsw_idx index")
+	}
+
+	_, err = db.Exec(`INSERT INTO meta (key, value) VALUES ('embedding_dimension', ?)`, storedDimension)
+	if err != nil {
+		return errors.Wrap(err, "Failed to insert metadata")
 	}
 
 	// Create table to track processed files and their hashes

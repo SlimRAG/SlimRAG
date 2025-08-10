@@ -19,15 +19,18 @@ var healthCmd = &cli.Command{
 		flagDSN,
 		flagEmbeddingBaseURL,
 		flagEmbeddingModel,
+		flagEmbeddingDimension,
 		flagAssistantBaseURL,
 		flagAssistantModel,
 	},
 	Action: func(ctx context.Context, command *cli.Command) error {
+		embeddingDimension := command.Int64("embedding-dimension")
+
 		dsn := command.String("dsn")
 		if dsn == "" {
 			return errors.New("dsn is required")
 		}
-		db, err := rag.OpenDuckDB(dsn)
+		db, err := rag.OpenDuckDB(dsn, embeddingDimension)
 		if err != nil {
 			return err
 		}

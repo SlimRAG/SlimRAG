@@ -71,13 +71,14 @@ var issueBotCmd = &cli.Command{
 		dsn := command.String("dsn")
 		embeddingBaseURL := command.String("embedding-base-url")
 		embeddingModel := command.String("embedding-model")
+		embeddingDimension := command.Int64("embedding-dimension")
 		assistantBaseURL := command.String("assistant-base-url")
 		assistantModel := command.String("assistant-model")
 		traceEnabled := command.Bool("trace")
 		auditLogDir := command.String("audit-log-dir")
 
 		// Initialize RAG
-		db, err := rag.OpenDuckDB(dsn)
+		db, err := rag.OpenDuckDB(dsn, embeddingDimension)
 		if err != nil {
 			return fmt.Errorf("failed to open database: %w", err)
 		}
