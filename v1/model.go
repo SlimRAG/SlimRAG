@@ -3,10 +3,18 @@ package rag
 import (
 	"encoding/hex"
 	"strings"
+	"time"
 
 	"github.com/cespare/xxhash"
 	"github.com/negrel/assert"
 )
+
+type FileInfo struct {
+	FilePath    string
+	FileName    string
+	FileHash    string
+	ProcessedAt time.Time
+}
 
 type DocumentChunk struct {
 	ID          string    `gorm:"primaryKey"`

@@ -8,6 +8,7 @@ require (
 	github.com/cockroachdb/errors v1.12.0
 	github.com/fioepq9/pzlog v0.0.0-20230530135430-bdd413a9bdc9
 	github.com/go-ego/gse v0.80.3
+	github.com/gobwas/glob v0.2.3
 	github.com/goccy/go-json v0.10.5
 	github.com/jedib0t/go-pretty/v6 v6.6.7
 	github.com/joho/godotenv v1.5.1

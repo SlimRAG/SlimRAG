@@ -155,15 +155,17 @@ func (c *DocumentChunker) ChunkDocument(content string, fileName string) (*Docum
 	return doc, nil
 }
 
-// ChunkDocumentWithFilePath chunks a document, using file path to generate document_id
-func (c *DocumentChunker) ChunkDocumentWithFilePath(content string, filePath string) (*Document, error) {
-	if content == "" {
-		return nil, fmt.Errorf("content is empty")
+// GetDocumentChunks chunks a document, using file path to generate document_id
+func (c *DocumentChunker) GetDocumentChunks(filePath string) (*Document, error) {
+	buf, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, err
 	}
 
+	content := string(buf)
 	content = c.preprocessText(content)
-	var chunks []*DocumentChunk
 
+	var chunks []*DocumentChunk
 	switch c.config.Strategy {
 	case "fixed":
 		chunks = c.fixedSizeChunking(content)
@@ -190,8 +192,8 @@ func (c *DocumentChunker) ChunkDocumentWithFilePath(content string, filePath str
 		RawDocument: filepath.Base(filePath),
 		Chunks:      chunks,
 	}
-
 	doc.Fix()
+
 	return doc, nil
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -12,7 +13,6 @@ import (
 	"sync"
 
 	"github.com/cespare/xxhash"
-	"github.com/cockroachdb/errors"
 	"github.com/minio/minio-go/v7"
 	"github.com/openai/openai-go"
 	"github.com/rs/zerolog/log"
@@ -71,13 +71,15 @@ func (r *RAG) UpsertDocumentChunks(document *Document) error {
 	return tx.Commit()
 }
 
-func (r *RAG) ComputeEmbeddings(ctx context.Context, onlyEmpty bool, workers int) error {
+func (r *RAG) ComputeEmbeddings(ctx context.Context, onlyEmpty bool, workers int, callback func()) error {
 	var err error
 	var rows *sql.Rows
 	if onlyEmpty {
-		rows, err = r.DB.QueryContext(ctx, "SELECT id, text, embedding FROM document_chunks WHERE embedding IS NULL")
+		rows, err = r.DB.QueryContext(ctx,
+			"SELECT id, text, embedding FROM document_chunks WHERE embedding IS NULL")
 	} else {
-		rows, err = r.DB.QueryContext(ctx, "SELECT id, text, embedding FROM document_chunks")
+		rows, err = r.DB.QueryContext(ctx,
+			"SELECT id, text, embedding FROM document_chunks")
 	}
 	if err != nil {
 		return err
@@ -89,7 +91,7 @@ func (r *RAG) ComputeEmbeddings(ctx context.Context, onlyEmpty bool, workers int
 	defer func() { _ = bar.Finish() }()
 
 	p := pool.New().WithMaxGoroutines(workers)
-	var wg sync.WaitGroup
+	var wg sync.WaitGroup // wait for all jobs finished
 
 	for rows.Next() {
 		var chunk DocumentChunk
@@ -136,6 +138,8 @@ func (r *RAG) ComputeEmbeddings(ctx context.Context, onlyEmpty bool, workers int
 			_, err = r.DB.ExecContext(ctx, "UPDATE document_chunks SET embedding = ? WHERE id = ?", chunk.Embedding, chunk.ID)
 			if err != nil {
 				log.Error().Err(err).Stack().Str("chunk_id", chunk.ID).Msg("Update embedding")
+			} else {
+				callback()
 			}
 		})
 	}
@@ -369,6 +373,9 @@ func (r *RAG) Ask(ctx context.Context, p *AskParameter) (string, error) {
 func CalculateFileHash(filePath string) (string, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
 		return "", err
 	}
 	defer file.Close()
@@ -391,12 +398,26 @@ func GenerateDocumentID(filePath string) string {
 	return pathHash + ":" + fileName
 }
 
+func (r *RAG) GetProcessedFileHash(filePath string) (string, error) {
+	var storedHash string
+	err := r.DB.
+		QueryRow("SELECT file_hash FROM processed_files WHERE file_path = ?", filePath).
+		Scan(&storedHash)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			err = nil
+		}
+		return "", err
+	}
+	return storedHash, nil
+}
+
 // IsFileProcessed checks if a file has been processed and if its hash matches
 func (r *RAG) IsFileProcessed(filePath, currentHash string) (bool, error) {
 	var storedHash string
 	err := r.DB.QueryRow("SELECT file_hash FROM processed_files WHERE file_path = ?", filePath).Scan(&storedHash)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return false, nil // File not processed yet
 		}
 		return false, err
@@ -404,9 +425,10 @@ func (r *RAG) IsFileProcessed(filePath, currentHash string) (bool, error) {
 	return storedHash == currentHash, nil
 }
 
-// UpdateFileHash updates or inserts the file hash record
-func (r *RAG) UpdateFileHash(filePath, fileHash string) error {
-	_, err := r.DB.Exec(`INSERT INTO processed_files (file_path, file_hash, processed_at)
+// UpdateProcessedFileHash updates or inserts the file hash record
+func (r *RAG) UpdateProcessedFileHash(filePath, fileHash string) error {
+	_, err := r.DB.Exec(`
+		INSERT INTO processed_files (file_path, file_hash, processed_at)
 		VALUES (?, ?, CURRENT_TIMESTAMP)
 		ON CONFLICT (file_path) DO UPDATE SET
 			file_hash = EXCLUDED.file_hash,
@@ -420,24 +442,102 @@ func (r *RAG) RemoveDocumentChunks(documentID string) error {
 	return err
 }
 
-// GetAllProcessedFiles returns all file paths from the processed_files table
-func (r *RAG) GetAllProcessedFiles() ([]string, error) {
-	rows, err := r.DB.Query("SELECT file_path FROM processed_files")
+func (r *RAG) RemoveDocumentChunksByFileHash(fileHash string) error {
+	_, err := r.DB.Exec("DELETE FROM document_chunks WHERE file_hash = ?", fileHash)
+	return err
+}
+
+func (r *RAG) RemoveDocumentChunksByFilePath(filePath string) error {
+	// find last file hash
+	storedHash, err := r.GetProcessedFileHash(filePath)
+	if err != nil {
+		return err
+	}
+
+	if storedHash != "" {
+		err = r.RemoveDocumentChunksByFileHash(storedHash)
+		if err != nil {
+			return err
+		}
+	}
+
+	_, err = r.DB.Exec("DELETE FROM processed_files WHERE file_hash = ?", storedHash)
+	return err
+}
+
+// FindFilesToProcess returns all file paths from the processed_files table
+// Delete non-exist files, update changed files
+func (r *RAG) FindFilesToProcess(filePathListForNow []string, force bool) ([]FileInfo, error) {
+	infos := make([]FileInfo, 0)
+	if force {
+		for _, filePath := range filePathListForNow {
+			var h string
+			h, err := CalculateFileHash(filePath)
+			if err != nil {
+				return nil, err
+			}
+
+			infos = append(infos, FileInfo{
+				FilePath: filePath,
+				FileName: filepath.Base(filePath),
+				FileHash: h,
+			})
+		}
+		return infos, nil
+	}
+
+	filesMap := make(map[string]struct{})
+	for _, file := range filePathListForNow {
+		filesMap[file] = struct{}{}
+	}
+
+	rows, err := r.DB.Query("SELECT file_path, file_name, file_hash FROM processed_files")
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
-	var filePaths []string
+	toDeleteFilePathList := make([]string, 0)
+
 	for rows.Next() {
-		var filePath string
-		err := rows.Scan(&filePath)
+		fileInfo := FileInfo{}
+		err = rows.Scan(&fileInfo.FilePath, &fileInfo.FileName, &fileInfo.FileHash)
 		if err != nil {
 			return nil, err
 		}
-		filePaths = append(filePaths, filePath)
+
+		processed := false
+		_, processed = filesMap[fileInfo.FilePath]
+		if !processed {
+			infos = append(infos, fileInfo)
+			continue
+		}
+
+		var h string
+		h, err = CalculateFileHash(fileInfo.FilePath)
+		if err != nil {
+			return nil, err
+		}
+		if h == "" {
+			// file deleted
+			toDeleteFilePathList = append(toDeleteFilePathList, fileInfo.FilePath)
+			continue
+		}
+
+		if h != fileInfo.FileHash {
+			// file changed
+			infos = append(infos, fileInfo)
+		}
 	}
-	return filePaths, nil
+
+	for _, filePath := range toDeleteFilePathList {
+		err = r.RemoveDocumentChunksByFilePath(filePath)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return infos, nil
 }
 
 // RemoveFileRecord removes a file record and its associated document chunks

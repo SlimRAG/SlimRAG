@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
+	"github.com/gobwas/glob"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/rs/zerolog/log"
@@ -44,6 +44,12 @@ var updateCmd = &cli.Command{
 			Usage: "Force reprocess all files regardless of hash",
 			Value: false,
 		},
+		&cli.StringFlag{
+			Name:    "glob",
+			Aliases: []string{"g"},
+			Usage:   "Glob pattern to filter files",
+			Value:   "*.md",
+		},
 	},
 	Action: func(ctx context.Context, command *cli.Command) error {
 		path, err := getArgumentPath(command)
@@ -55,14 +61,16 @@ var updateCmd = &cli.Command{
 		baseURL := command.String("embedding-base-url")
 		embeddingModel := command.String("embedding-model")
 		embeddingDimensions := int64(command.Int("embedding-dimension"))
-		configPath := command.String("config")
-		strategy := command.String("strategy")
-		maxSize := command.Int("max-size")
-		minSize := command.Int("min-size")
-		overlap := command.Int("overlap")
-		language := command.String("language")
+		chunkerConfigPath := command.String("chunker-config")
 		workers := command.Int("workers")
 		force := command.Bool("force")
+		globStr := command.String("glob")
+		if globStr == "" {
+			globStr = "*.md"
+			log.Warn().Str("glob", globStr).
+				Msg("No glob pattern to filter files, default to *.md")
+		}
+		fileGlob := glob.MustCompile(globStr)
 
 		// Open database
 		db, err := rag.OpenDuckDB(dsn)
@@ -73,9 +81,6 @@ var updateCmd = &cli.Command{
 
 		// Validate or set embedding dimension
 		embeddingDimensions = rag.GetStoredEmbeddingDimension(db, embeddingDimensions)
-		if err != nil {
-			return fmt.Errorf("failed to get stored embedding dimension: %w", err)
-		}
 
 		// Create RAG instance
 		embeddingClient := openai.NewClient(option.WithBaseURL(baseURL))
@@ -88,22 +93,9 @@ var updateCmd = &cli.Command{
 
 		// Create chunking config
 		var config *rag.ChunkingConfig
-		if configPath != "" {
-			config, err = rag.LoadChunkingConfig(configPath)
-			if err != nil {
-				return fmt.Errorf("failed to load chunking config: %w", err)
-			}
-		} else {
-			config = &rag.ChunkingConfig{
-				MaxChunkSize:        maxSize,
-				MinChunkSize:        minSize,
-				OverlapSize:         overlap,
-				SentenceWindow:      3,
-				Strategy:            strategy,
-				Language:            language,
-				PreserveSections:    true,
-				SimilarityThreshold: 0.7,
-			}
+		config, err = rag.LoadChunkingConfig(chunkerConfigPath)
+		if err != nil {
+			return fmt.Errorf("failed to load chunking config: %w", err)
 		}
 
 		// Create document chunker
@@ -112,124 +104,75 @@ var updateCmd = &cli.Command{
 			return fmt.Errorf("failed to create chunker: %w", err)
 		}
 
-		// Find all .md files
-		var mdFiles []string
+		// Find files to process
+		var toProcessFiles []string
 		err = filepath.Walk(path, func(filePath string, info os.FileInfo, err error) error {
 			if err != nil {
 				return err
 			}
-			if !info.IsDir() && strings.HasSuffix(strings.ToLower(info.Name()), ".md") {
-				mdFiles = append(mdFiles, filePath)
+			if info.IsDir() {
+				return nil
+			}
+
+			if fileGlob.Match(info.Name()) {
+				toProcessFiles = append(toProcessFiles, filePath)
 			}
 			return nil
 		})
 		if err != nil {
 			return fmt.Errorf("failed to scan directory: %w", err)
 		}
+		log.Info().Int("total_files", len(toProcessFiles)).Msg("Found markdown files")
 
-		log.Info().Int("total_files", len(mdFiles)).Msg("Found markdown files")
-
-		// Clean up deleted files from database
-		var removedCount int
-		processedFiles, err := r.GetAllProcessedFiles()
+		// find files to process
+		filesToProcess, err := r.FindFilesToProcess(toProcessFiles, force)
 		if err != nil {
-			log.Error().Err(err).Msg("Failed to get processed files")
-		} else {
-			for _, processedFile := range processedFiles {
-				if _, err := os.Stat(processedFile); os.IsNotExist(err) {
-					err = r.RemoveFileRecord(processedFile)
-					if err != nil {
-						log.Error().Err(err).Str("file", processedFile).Msg("Failed to remove deleted file record")
-					} else {
-						removedCount++
-						log.Info().Str("file", processedFile).Msg("Removed deleted file from database")
-					}
-				}
-			}
-			if removedCount > 0 {
-				log.Info().Int("removed", removedCount).Msg("Cleaned up deleted files")
-			}
+			return err
 		}
 
 		// Process files
-		var processedCount, skippedCount int
-		bar := progressbar.Default(int64(len(mdFiles)))
-
-		for _, filePath := range mdFiles {
-			// Calculate file hash
-			currentHash, err := rag.CalculateFileHash(filePath)
-			if err != nil {
-				log.Error().Err(err).Str("file", filePath).Msg("Failed to calculate file hash")
-				continue
-			}
-
-			// Check if file needs processing
-			if !force {
-				alreadyProcessed, err := r.IsFileProcessed(filePath, currentHash)
-				if err != nil {
-					log.Error().Err(err).Str("file", filePath).Msg("Failed to check file processing status")
-					continue
-				}
-				if alreadyProcessed {
-					skippedCount++
-					bar.Add(1)
-					continue
-				}
-			}
-
-			// Read and process file
-			content, err := os.ReadFile(filePath)
-			if err != nil {
-				log.Error().Err(err).Str("file", filePath).Msg("Failed to read file")
-				continue
-			}
+		bar := progressbar.Default(int64(len(toProcessFiles)))
+		for _, fileInfo := range filesToProcess {
+			filePath := fileInfo.FilePath
 
 			// Chunk document
-			doc, err := chunker.ChunkDocumentWithFilePath(string(content), filePath)
+			doc, err := chunker.GetDocumentChunks(filePath)
 			if err != nil {
-				log.Error().Err(err).Str("file", filePath).Msg("Failed to chunk document")
+				log.Error().Err(err).Str("file_path", filePath).
+					Msg("Failed to chunk document")
 				continue
-			}
-
-			// Remove old chunks for this document if it was previously processed
-			documentID := rag.GenerateDocumentID(filePath)
-			err = r.RemoveDocumentChunks(documentID)
-			if err != nil {
-				log.Error().Err(err).Str("document_id", documentID).Msg("Failed to remove old chunks")
-				// Continue anyway, as this might be a new document
 			}
 
 			// Insert new chunks
 			err = r.UpsertDocumentChunks(doc)
 			if err != nil {
-				log.Error().Err(err).Str("file", filePath).Msg("Failed to upsert document chunks")
+				log.Error().Err(err).Str("file_path", filePath).
+					Msg("Failed to upsert document chunks")
 				continue
 			}
 
 			// Update file hash record
-			err = r.UpdateFileHash(filePath, currentHash)
+			err = r.UpdateProcessedFileHash(fileInfo.FilePath, fileInfo.FileHash)
 			if err != nil {
-				log.Error().Err(err).Str("file", filePath).Msg("Failed to update file hash")
-				// Continue anyway, as the chunks are already inserted
+				log.Error().Err(err).Str("file", filePath).
+					Msg("Failed to update file hash")
+				continue
 			}
 
-			processedCount++
 			_ = bar.Add(1)
-			log.Info().Str("file", filePath).Int("chunks", len(doc.Chunks)).Msg("Processed file")
+			log.Info().Str("file", filePath).Int("chunks", len(doc.Chunks)).
+				Msg("Processed file")
 		}
 
 		_ = bar.Finish()
-		log.Info().Int("processed", processedCount).Int("skipped", skippedCount).Msg("File processing completed")
 
 		// Compute embeddings for new chunks
-		if processedCount > 0 {
-			log.Info().Msg("Computing embeddings for new chunks")
-			err = r.ComputeEmbeddings(ctx, true, workers) // Only compute for empty embeddings
-			if err != nil {
-				return fmt.Errorf("failed to compute embeddings: %w", err)
-			}
-			log.Info().Msg("Embedding computation completed")
+		log.Info().Msg("Computing embeddings for new chunks")
+		err = r.ComputeEmbeddings(ctx, true, workers, func() {})
+		if err != nil {
+			return fmt.Errorf("failed to compute embeddings: %w", err)
 		}
+		log.Info().Msg("Embedding computation completed")
 
 		return nil
 	},
