@@ -116,11 +116,12 @@ var askCmd = &cli.Command{
 		}
 
 		r := rag.RAG{
-			DB:              db,
-			EmbeddingClient: embeddingClientInterface,
-			EmbeddingModel:  embeddingModel,
-			AssistantClient: assistantClientInterface,
-			AssistantModel:  assistantModel,
+			DB:                  db,
+			EmbeddingClient:     embeddingClientInterface,
+			EmbeddingModel:      embeddingModel,
+			EmbeddingDimensions: embeddingDimension,
+			AssistantClient:     assistantClientInterface,
+			AssistantModel:      assistantModel,
 		}
 
 		// Check if query is a file path
