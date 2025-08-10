@@ -186,16 +186,18 @@ func ask(ctx context.Context, r *rag.RAG, query string, retrievalLimit int, sele
 		return err
 	}
 
-	// Use glamour to render markdown
-	rendered, err := glamour.Render(answer, "dark")
-	if err != nil {
-		fmt.Printf("Error rendering markdown: %v\n", err)
-		fmt.Println(answer)
-		return nil
-	}
-	fmt.Println(rendered)
-
+	tryPrintMarkdown(answer)
 	return nil
+}
+
+func tryPrintMarkdown(content string) {
+	rendered, err := glamour.Render(content, "dark")
+	if err != nil {
+		fmt.Printf("Error rendering markdown: %v\n\n", err)
+		fmt.Println(content)
+	} else {
+		fmt.Println(rendered)
+	}
 }
 
 // processQueryFile handles reading queries from different file formats
