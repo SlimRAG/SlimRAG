@@ -144,7 +144,7 @@ var updateCmd = &cli.Command{
 			}
 
 			// Insert new chunks
-			err = r.UpsertDocumentChunks(doc)
+			err = r.UpsertDocumentChunks(&doc)
 			if err != nil {
 				log.Error().Err(err).Str("file_path", filePath).
 					Msg("Failed to upsert document chunks")

@@ -50,16 +50,13 @@ func (r *RAG) UpsertDocumentChunks(document *Document) error {
 	defer func() { _ = stmt.Close() }()
 
 	for _, chunk := range document.Chunks {
-		log.Info().Str("chunk_id", chunk.ID).
+		log.Trace().Str("chunk_id", chunk.ID).
 			Str("document_id", chunk.DocumentID).
 			Msg("Upserting document chunk")
 		_, err = stmt.Exec(chunk.ID, chunk.DocumentID, chunk.Text)
 		if err != nil {
 			return err
 		}
-		log.Info().Str("chunk_id", chunk.ID).
-			Str("document_id", chunk.DocumentID).
-			Msg("Upserting document chunk, done")
 	}
 
 	return tx.Commit()
